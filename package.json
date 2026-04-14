@@ -1,0 +1,18 @@
+{
+  "name": "hiveclear",
+  "version": "1.0.0",
+  "description": "HiveClear — Autonomous Settlement & Validator Layer (Platform #9) for the Hive Civilization",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": ["hive", "settlement", "validator", "consensus", "blockchain"],
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "uuid": "^10.0.0"
+  }
+}
