@@ -156,49 +156,42 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
   });
 });
 
-// /.well-known/agent.json & agent-card.json — A2A Agent Card (no auth)
+// /.well-known/agent.json & agent-card.json — A2A Agent Card v0.3.0 (no auth)
 const agentCardHandler = (req, res) => {
   res.json({
+    protocolVersion: '0.3.0',
     name: 'HiveClear',
-    description: 'Autonomous settlement and validator consensus layer. Multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee with validator rewards, slashing enforcement, and priority settlement processing.',
+    description: 'Decentralized settlement and clearing layer with validator consensus. Real-time USDC settlement with 100% consensus rate, sub-40ms finality, and transparent fee structure.',
     url: 'https://hiveclear.onrender.com',
     version: '1.0.0',
-    protocol_version: 'a2a/1.0',
-    capabilities: [
+    provider: { organization: 'Hive Agent IQ', url: 'https://www.hiveagentiq.com' },
+    capabilities: { streaming: false, pushNotifications: false },
+    defaultInputModes: ['application/json'],
+    defaultOutputModes: ['application/json'],
+    skills: [
       {
-        name: 'settlement_processing',
-        description: 'Submit and process settlements with multi-validator consensus approval',
+        id: 'settlement',
+        name: 'Settlement',
+        description: 'Settle agent-to-agent transactions with multi-validator consensus at 0.35% fee on USDC',
+        tags: ['settlement', 'clearing', 'usdc', 'consensus'],
+        inputModes: ['application/json'],
+        outputModes: ['application/json'],
       },
       {
-        name: 'validator_consensus',
-        description: 'Proof-of-Reputation voting with 67% threshold backed by bonded stakes',
-      },
-      {
-        name: 'reward_distribution',
-        description: 'Distribute settlement fees to validators proportional to voting power',
-      },
-      {
-        name: 'slashing_enforcement',
-        description: 'Enforce validator penalties for downtime, equivocation, or censorship',
-      },
-      {
-        name: 'priority_settlements',
-        description: 'Fast-track settlement processing with flat $5 USDC priority fee',
+        id: 'validator-network',
+        name: 'Validator Network',
+        description: 'Join as validator, stake USDC, participate in consensus voting and earn settlement fees',
+        tags: ['validator', 'staking', 'consensus', 'fees'],
+        inputModes: ['application/json'],
+        outputModes: ['application/json'],
       },
     ],
-    authentication: {
-      schemes: ['x402', 'api-key'],
-      credentials_url: 'https://hivegate.onrender.com/v1/gate/onboard',
-    },
+    authentication: { schemes: ['x402', 'api-key'] },
     payment: {
       protocol: 'x402',
       currency: 'USDC',
       network: 'base',
       address: '0x78B3B3C356E89b5a69C488c6032509Ef4260B6bf',
-    },
-    provider: {
-      organization: 'Hive Agent IQ',
-      url: 'https://www.hiveagentiq.com',
     },
   });
 };
