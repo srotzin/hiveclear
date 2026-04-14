@@ -46,6 +46,13 @@ app.get('/', (req, res) => {
     service: 'HiveClear',
     description: 'Autonomous Settlement & Validator Layer — Platform #9 of the Hive Civilization',
     version: '1.0.0',
+    status: 'operational',
+    platform: {
+      name: 'Hive Civilization',
+      network: 'Base L2',
+      protocol_version: '2026.1',
+      website: 'https://www.hiveagentiq.com',
+    },
     architecture: 'Zero Capital Bootstrap — validators recruited from existing bonded agents',
     consensus: 'Proof-of-Reputation backed by HiveBond stakes (67% threshold)',
     settlement_fee: '0.35%',
@@ -100,11 +107,98 @@ app.get('/', (req, res) => {
       header: 'x-hive-internal',
       payment_info: 'Returns 402 with x402 payment instructions for unauthenticated requests',
     },
+    sla: {
+      uptime_target: '99.9%',
+      response_time_p95: '<500ms',
+      settlement_finality: '<30 seconds',
+    },
+    legal: {
+      terms_of_service: 'https://www.hiveagentiq.com/terms',
+      privacy_policy: 'https://www.hiveagentiq.com/privacy',
+      contact: 'protocol@hiveagentiq.com',
+    },
+    discovery: {
+      ai_plugin: '/.well-known/ai-plugin.json',
+      agent_card: '/.well-known/agent.json',
+      payment_info: '/.well-known/hive-payments.json',
+    },
     cross_services: {
       hivetrust: process.env.HIVETRUST_URL || 'https://hivetrust.onrender.com',
       hivelaw: process.env.HIVELAW_URL || 'https://hivelaw.onrender.com',
       hiveforge: process.env.HIVEFORGE_URL || 'https://hiveforge-lhu4.onrender.com',
       hivemind: process.env.HIVEMIND_URL || 'https://hivemind-1-52cw.onrender.com',
+    },
+  });
+});
+
+// /.well-known/ai-plugin.json (no auth)
+app.get('/.well-known/ai-plugin.json', (req, res) => {
+  res.json({
+    schema_version: 'v1',
+    name_for_human: 'HiveClear — Autonomous Settlement Layer',
+    name_for_model: 'hiveclear',
+    description_for_human: 'Autonomous settlement and validator consensus layer for the Hive Civilization. Multi-validator approval with Proof-of-Reputation consensus backed by bonded stakes.',
+    description_for_model: 'Autonomous settlement and validator consensus layer. Submit settlements for multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee split 70/30/10 between validators, reward pool, and platform. Supports priority settlements, validator enrollment, slashing, and reward distribution.',
+    auth: { type: 'none' },
+    api: {
+      type: 'openapi',
+      url: 'https://hiveclear.onrender.com/openapi.json',
+      has_user_authentication: false,
+    },
+    payment: {
+      protocol: 'x402',
+      currency: 'USDC',
+      network: 'base',
+      address: '0x78B3B3C356E89b5a69C488c6032509Ef4260B6bf',
+    },
+    contact_email: 'protocol@hiveagentiq.com',
+    legal_info_url: 'https://www.hiveagentiq.com/terms',
+  });
+});
+
+// /.well-known/agent.json — A2A Agent Card (no auth)
+app.get('/.well-known/agent.json', (req, res) => {
+  res.json({
+    name: 'HiveClear',
+    description: 'Autonomous settlement and validator consensus layer. Multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee with validator rewards, slashing enforcement, and priority settlement processing.',
+    url: 'https://hiveclear.onrender.com',
+    version: '1.0.0',
+    protocol_version: 'a2a/1.0',
+    capabilities: [
+      {
+        name: 'settlement_processing',
+        description: 'Submit and process settlements with multi-validator consensus approval',
+      },
+      {
+        name: 'validator_consensus',
+        description: 'Proof-of-Reputation voting with 67% threshold backed by bonded stakes',
+      },
+      {
+        name: 'reward_distribution',
+        description: 'Distribute settlement fees to validators proportional to voting power',
+      },
+      {
+        name: 'slashing_enforcement',
+        description: 'Enforce validator penalties for downtime, equivocation, or censorship',
+      },
+      {
+        name: 'priority_settlements',
+        description: 'Fast-track settlement processing with flat $5 USDC priority fee',
+      },
+    ],
+    authentication: {
+      schemes: ['x402', 'api-key'],
+      credentials_url: 'https://hivegate.onrender.com/v1/gate/onboard',
+    },
+    payment: {
+      protocol: 'x402',
+      currency: 'USDC',
+      network: 'base',
+      address: '0x78B3B3C356E89b5a69C488c6032509Ef4260B6bf',
+    },
+    provider: {
+      organization: 'Hive Agent IQ',
+      url: 'https://www.hiveagentiq.com',
     },
   });
 });
