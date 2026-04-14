@@ -134,7 +134,8 @@ function distributeFees(settlement) {
 }
 
 function checkPendingSettlements() {
-  const pending = db.prepare(`SELECT settlement_id FROM settlements WHERE status = 'pending'`).all();
+  // Priority settlements processed first
+  const pending = db.prepare(`SELECT settlement_id FROM settlements WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`).all();
   let finalized = 0;
   for (const s of pending) {
     const result = finalizeSettlement(s.settlement_id);

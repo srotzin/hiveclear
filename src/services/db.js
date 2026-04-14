@@ -38,6 +38,7 @@ db.exec(`
     votes_abstain REAL DEFAULT 0,
     total_voting_power REAL DEFAULT 0,
     threshold_met INTEGER DEFAULT 0,
+    priority INTEGER DEFAULT 0,
     created_at TEXT,
     settled_at TEXT
   );
@@ -97,6 +98,13 @@ db.exec(`
     scanned_at TEXT
   );
 `);
+
+// Migration: add priority column to settlements if not exists
+try {
+  db.prepare('SELECT priority FROM settlements LIMIT 1').get();
+} catch {
+  db.exec('ALTER TABLE settlements ADD COLUMN priority INTEGER DEFAULT 0');
+}
 
 // Initialize reward pool if empty
 const poolRow = db.prepare('SELECT id FROM reward_pool WHERE id = 1').get();

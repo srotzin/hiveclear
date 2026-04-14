@@ -17,6 +17,7 @@ const rewardRoutes = require('./routes/rewards');
 const scoutRoutes = require('./routes/scout');
 const slashingRoutes = require('./routes/slashing');
 const statsRoutes = require('./routes/stats');
+const velvetRopeRoutes = require('./routes/velvet-rope');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -80,6 +81,12 @@ app.get('/', (req, res) => {
         'POST /v1/clear/slash': 'Slash validator for violation',
         'GET /v1/clear/slashing/history': 'Get slashing event history',
       },
+      queue: {
+        'GET /v1/clear/queue': 'Settlement processing queue status',
+        'POST /v1/clear/priority-settle': 'Submit priority settlement ($5 flat fee)',
+        'GET /v1/clear/leaderboard': 'Top settlers leaderboard',
+        'GET /v1/clear/consensus/health': 'Consensus health and validator status',
+      },
       stats: {
         'GET /v1/clear/stats': 'Network-wide statistics',
       },
@@ -113,6 +120,7 @@ app.use('/v1/clear/rewards', rewardRoutes);
 app.use('/v1/clear/scout', scoutRoutes);
 app.use('/v1/clear', slashingRoutes);
 app.use('/v1/clear/stats', statsRoutes);
+app.use('/v1/clear', velvetRopeRoutes);
 
 // Uptime monitor — check heartbeats and update uptime
 function uptimeMonitor() {
