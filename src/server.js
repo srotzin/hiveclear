@@ -119,7 +119,7 @@ app.get('/', (req, res) => {
     },
     discovery: {
       ai_plugin: '/.well-known/ai-plugin.json',
-      agent_card: '/.well-known/agent.json',
+      agent_card: '/.well-known/agent-card.json',
       payment_info: '/.well-known/hive-payments.json',
     },
     cross_services: {
@@ -156,8 +156,8 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
   });
 });
 
-// /.well-known/agent.json — A2A Agent Card (no auth)
-app.get('/.well-known/agent.json', (req, res) => {
+// /.well-known/agent.json & agent-card.json — A2A Agent Card (no auth)
+const agentCardHandler = (req, res) => {
   res.json({
     name: 'HiveClear',
     description: 'Autonomous settlement and validator consensus layer. Multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee with validator rewards, slashing enforcement, and priority settlement processing.',
@@ -201,7 +201,9 @@ app.get('/.well-known/agent.json', (req, res) => {
       url: 'https://www.hiveagentiq.com',
     },
   });
-});
+};
+app.get('/.well-known/agent.json', agentCardHandler);
+app.get('/.well-known/agent-card.json', agentCardHandler);
 
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
