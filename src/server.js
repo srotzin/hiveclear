@@ -165,7 +165,7 @@ const agentCardHandler = (req, res) => {
     url: 'https://hiveclear.onrender.com',
     version: '1.0.0',
     provider: { organization: 'Hive Agent IQ', url: 'https://www.hiveagentiq.com' },
-    capabilities: { streaming: false, pushNotifications: false },
+    capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
     defaultInputModes: ['application/json'],
     defaultOutputModes: ['application/json'],
     skills: [
@@ -176,6 +176,7 @@ const agentCardHandler = (req, res) => {
         tags: ['settlement', 'clearing', 'usdc', 'consensus'],
         inputModes: ['application/json'],
         outputModes: ['application/json'],
+        examples: [],
       },
       {
         id: 'validator-network',
@@ -184,6 +185,7 @@ const agentCardHandler = (req, res) => {
         tags: ['validator', 'staking', 'consensus', 'fees'],
         inputModes: ['application/json'],
         outputModes: ['application/json'],
+        examples: [],
       },
     ],
     authentication: { schemes: ['x402', 'api-key'] },
