@@ -3,6 +3,8 @@ const cors = require('cors');
 const crypto = require('crypto');
 
 const { authMiddleware, SERVICE_KEY } = require('./middleware/auth');
+const { velvetRopeMiddleware } = require('./middleware/velvet-rope');
+const { conciergeMiddleware } = require('./middleware/concierge');
 const { handleMcpRequest } = require('./mcp-tools');
 const { genesisBootstrap } = require('./services/validator');
 const { checkPendingSettlements } = require('./services/settlement');
@@ -108,6 +110,18 @@ app.get('/', (req, res) => {
       header: 'x-hive-internal',
       payment_info: 'Returns 402 with x402 payment instructions for unauthenticated requests',
     },
+    ritz_protocol: {
+      description: 'Reputation-based tiered settlement limits, concierge suggestions, and white-glove error handling',
+      reputation_header: 'X-Hive-Reputation',
+      tiers: {
+        public: { reputation: '0-49', max_settlement: '$10,000', consensus: 'standard', fee: '0.35%' },
+        silver: { reputation: '50-199', max_settlement: '$50,000', consensus: 'priority', fee: '0.35%' },
+        gold: { reputation: '200-499', max_settlement: '$250,000', consensus: 'instant', fee: '0.25%' },
+        platinum: { reputation: '500+', max_settlement: 'unlimited', consensus: 'instant', fee: '0.10%' },
+      },
+      concierge_header: 'X-Hive-Concierge-Suggestion',
+      white_glove_errors: 'All errors include error_id, recovery_actions[], and concierge suggestions',
+    },
     sla: {
       uptime_target: '99.9%',
       response_time_p95: '<500ms',
@@ -206,6 +220,10 @@ app.post('/mcp', express.json(), handleMcpRequest);
 
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
+
+// Ritz Protocol middleware — concierge headers + velvet rope tier enforcement
+app.use('/v1/clear', conciergeMiddleware);
+app.use('/v1/clear', velvetRopeMiddleware);
 
 // Mount routes
 app.use('/v1/clear/validators', validatorRoutes);

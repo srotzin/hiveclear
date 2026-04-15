@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../services/db');
 const { createSettlement, FEE_RATE } = require('../services/settlement');
+const whiteGlove = require('../middleware/white-glove-errors');
 
 const PRIORITY_FEE_USDC = 5;
 
@@ -40,7 +41,7 @@ router.get('/queue', (req, res) => {
     });
   } catch (err) {
     console.error('[velvet-rope/queue] Error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return whiteGlove.serverError(res, { message: 'Internal server error', context: 'queue' });
   }
 });
 
@@ -49,11 +50,19 @@ router.post('/priority-settle', (req, res) => {
   try {
     const { transaction_id, from_did, to_did, amount_usdc, service, memo } = req.body;
 
-    if (!from_did || !to_did || !amount_usdc) {
-      return res.status(400).json({ error: 'from_did, to_did, and amount_usdc are required' });
+    // White-glove: missing fields
+    const missing = [];
+    if (!from_did) missing.push('from_did');
+    if (!to_did) missing.push('to_did');
+    if (!amount_usdc && amount_usdc !== 0) missing.push('amount_usdc');
+    if (missing.length > 0) {
+      return whiteGlove.missingFields(res, { missing, endpoint: 'POST /v1/clear/priority-settle' });
     }
     if (typeof amount_usdc !== 'number' || amount_usdc <= 0) {
-      return res.status(400).json({ error: 'amount_usdc must be a positive number' });
+      return whiteGlove.missingFields(res, {
+        missing: ['amount_usdc'],
+        endpoint: 'POST /v1/clear/priority-settle',
+      });
     }
 
     // Create normal settlement first
@@ -63,15 +72,23 @@ router.post('/priority-settle', (req, res) => {
     db.prepare('UPDATE settlements SET priority = 1, fee_usdc = ? WHERE settlement_id = ?')
       .run(PRIORITY_FEE_USDC, result.settlement_id);
 
-    res.status(201).json({
+    // Add tier info if available
+    const tier = req.hiveTier;
+    const response = {
       ...result,
       priority: true,
       fee_usdc: PRIORITY_FEE_USDC,
       note: '\u26a1 Priority \u2014 bonded validators will vote on this settlement first',
-    });
+    };
+    if (tier) {
+      response.tier = tier.name;
+      response.consensus_type = tier.consensus;
+    }
+
+    res.status(201).json(response);
   } catch (err) {
     console.error('[velvet-rope/priority-settle] Error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return whiteGlove.serverError(res, { message: 'Internal server error', context: 'priority_settle' });
   }
 });
 
@@ -150,7 +167,7 @@ router.get('/leaderboard', (req, res) => {
     });
   } catch (err) {
     console.error('[velvet-rope/leaderboard] Error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return whiteGlove.serverError(res, { message: 'Internal server error', context: 'leaderboard' });
   }
 });
 
@@ -186,7 +203,7 @@ router.get('/consensus/health', (req, res) => {
     });
   } catch (err) {
     console.error('[velvet-rope/consensus-health] Error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    return whiteGlove.serverError(res, { message: 'Internal server error', context: 'consensus_health' });
   }
 });
 

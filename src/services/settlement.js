@@ -4,10 +4,11 @@ const { logSettlement } = require('./cross-service');
 
 const FEE_RATE = 0.0035; // 0.35%
 
-function createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo }) {
+function createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate }) {
   const settlementId = `stl_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
   const now = new Date().toISOString();
-  const feeUsdc = Math.round(amount_usdc * FEE_RATE * 100) / 100;
+  const effectiveRate = typeof fee_rate === 'number' ? fee_rate : FEE_RATE;
+  const feeUsdc = Math.round(amount_usdc * effectiveRate * 100) / 100;
 
   // Get total active voting power
   const totalPower = db.prepare(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`).get();
