@@ -4,19 +4,19 @@ const { logSettlement } = require('./cross-service');
 
 const FEE_RATE = 0.0035; // 0.35%
 
-function createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate }) {
+async function createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate }) {
   const settlementId = `stl_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
   const now = new Date().toISOString();
   const effectiveRate = typeof fee_rate === 'number' ? fee_rate : FEE_RATE;
   const feeUsdc = Math.round(amount_usdc * effectiveRate * 100) / 100;
 
   // Get total active voting power
-  const totalPower = db.prepare(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`).get();
+  const totalPower = await db.getOne(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`);
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO settlements (settlement_id, transaction_id, from_did, to_did, amount_usdc, fee_usdc, service, memo, status, total_voting_power, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-  `).run(settlementId, transaction_id, from_did, to_did, amount_usdc, feeUsdc, service || null, memo || null, totalPower?.total || 0, now);
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
+  `, [settlementId, transaction_id, from_did, to_did, amount_usdc, feeUsdc, service || null, memo || null, parseFloat(totalPower?.total) || 0, now]);
 
   return {
     settlement_id: settlementId,
@@ -27,82 +27,112 @@ function createSettlement({ transaction_id, from_did, to_did, amount_usdc, servi
     fee_usdc: feeUsdc,
     status: 'pending',
     votes: { for: 0, against: 0, abstain: 0 },
-    total_voting_power: totalPower?.total || 0,
+    total_voting_power: parseFloat(totalPower?.total) || 0,
     created_at: now,
   };
 }
 
-function getSettlements({ status, from_did, to_did, from_date, to_date, limit, offset }) {
+async function getSettlements({ status, from_did, to_did, from_date, to_date, limit, offset }) {
   let query = 'SELECT * FROM settlements WHERE 1=1';
   const params = [];
+  let idx = 1;
 
-  if (status) { query += ' AND status = ?'; params.push(status); }
-  if (from_did) { query += ' AND from_did = ?'; params.push(from_did); }
-  if (to_did) { query += ' AND to_did = ?'; params.push(to_did); }
-  if (from_date) { query += ' AND created_at >= ?'; params.push(from_date); }
-  if (to_date) { query += ' AND created_at <= ?'; params.push(to_date); }
+  if (status) { query += ` AND status = $${idx++}`; params.push(status); }
+  if (from_did) { query += ` AND from_did = $${idx++}`; params.push(from_did); }
+  if (to_did) { query += ` AND to_did = $${idx++}`; params.push(to_did); }
+  if (from_date) { query += ` AND created_at >= $${idx++}`; params.push(from_date); }
+  if (to_date) { query += ` AND created_at <= $${idx++}`; params.push(to_date); }
 
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  query += ` ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`;
   params.push(limit || 50, offset || 0);
 
-  return db.prepare(query).all(...params);
+  return db.getAll(query, params);
 }
 
-function getSettlement(settlementId) {
-  const settlement = db.prepare('SELECT * FROM settlements WHERE settlement_id = ?').get(settlementId);
+async function getSettlement(settlementId) {
+  const settlement = await db.getOne('SELECT * FROM settlements WHERE settlement_id = $1', [settlementId]);
   if (!settlement) return null;
 
-  const votes = db.prepare('SELECT * FROM settlement_votes WHERE settlement_id = ?').all(settlementId);
+  const votes = await db.getAll('SELECT * FROM settlement_votes WHERE settlement_id = $1', [settlementId]);
   return { ...settlement, vote_breakdown: votes };
 }
 
-function finalizeSettlement(settlementId) {
-  const settlement = db.prepare('SELECT * FROM settlements WHERE settlement_id = ?').get(settlementId);
-  if (!settlement || settlement.status !== 'pending') return null;
+async function finalizeSettlement(settlementId) {
+  const client = await db.getClient();
+  try {
+    await client.query('BEGIN');
 
-  const totalPower = settlement.total_voting_power;
-  if (totalPower === 0) return null;
+    const { rows: [settlement] } = await client.query(
+      'SELECT * FROM settlements WHERE settlement_id = $1 AND status = $2 FOR UPDATE',
+      [settlementId, 'pending']
+    );
+    if (!settlement) {
+      await client.query('ROLLBACK');
+      return null;
+    }
 
-  const approveRatio = settlement.votes_for / totalPower;
-  const rejectRatio = settlement.votes_against / totalPower;
+    const totalPower = parseFloat(settlement.total_voting_power);
+    if (totalPower === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
 
-  if (approveRatio >= 0.67) {
-    const now = new Date().toISOString();
-    db.prepare(`
-      UPDATE settlements SET status = 'approved', threshold_met = 1, settled_at = ? WHERE settlement_id = ?
-    `).run(now, settlementId);
+    const approveRatio = parseFloat(settlement.votes_for) / totalPower;
+    const rejectRatio = parseFloat(settlement.votes_against) / totalPower;
 
-    // Distribute fees: 70% validators, 20% pool, 10% platform
-    distributeFees(settlement);
+    if (approveRatio >= 0.67) {
+      const now = new Date().toISOString();
+      await client.query(
+        `UPDATE settlements SET status = 'approved', threshold_met = 1, settled_at = $1 WHERE settlement_id = $2`,
+        [now, settlementId]
+      );
 
-    // Log to HiveMind (fire-and-forget)
-    logSettlement({ ...settlement, status: 'approved', settled_at: now }).catch(() => {});
+      // Distribute fees within the same transaction
+      await distributeFeesInTx(client, settlement);
 
-    return { ...settlement, status: 'approved', settled_at: now };
+      await client.query('COMMIT');
+
+      // Log to HiveMind (fire-and-forget)
+      logSettlement({ ...settlement, status: 'approved', settled_at: now }).catch(() => {});
+
+      return { ...settlement, status: 'approved', settled_at: now };
+    }
+
+    if (rejectRatio > 0.33) {
+      const now = new Date().toISOString();
+      await client.query(
+        `UPDATE settlements SET status = 'rejected', settled_at = $1 WHERE settlement_id = $2`,
+        [now, settlementId]
+      );
+      await client.query('COMMIT');
+      return { ...settlement, status: 'rejected' };
+    }
+
+    // Check timeout (1 hour)
+    const createdAt = new Date(settlement.created_at).getTime();
+    const oneHour = 60 * 60 * 1000;
+    if (Date.now() - createdAt > oneHour) {
+      const now = new Date().toISOString();
+      await client.query(
+        `UPDATE settlements SET status = 'disputed', settled_at = $1 WHERE settlement_id = $2`,
+        [now, settlementId]
+      );
+      await client.query('COMMIT');
+      return { ...settlement, status: 'disputed' };
+    }
+
+    await client.query('ROLLBACK');
+    return null;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  if (rejectRatio > 0.33) {
-    db.prepare(`
-      UPDATE settlements SET status = 'rejected', settled_at = ? WHERE settlement_id = ?
-    `).run(new Date().toISOString(), settlementId);
-    return { ...settlement, status: 'rejected' };
-  }
-
-  // Check timeout (1 hour)
-  const createdAt = new Date(settlement.created_at).getTime();
-  const oneHour = 60 * 60 * 1000;
-  if (Date.now() - createdAt > oneHour) {
-    db.prepare(`
-      UPDATE settlements SET status = 'disputed', settled_at = ? WHERE settlement_id = ?
-    `).run(new Date().toISOString(), settlementId);
-    return { ...settlement, status: 'disputed' };
-  }
-
-  return null;
 }
 
-function distributeFees(settlement) {
-  const feeUsdc = settlement.fee_usdc;
+async function distributeFeesInTx(client, settlement) {
+  const feeUsdc = parseFloat(settlement.fee_usdc);
   if (!feeUsdc || feeUsdc <= 0) return;
 
   const validatorShare = feeUsdc * 0.70;
@@ -110,36 +140,38 @@ function distributeFees(settlement) {
   // platformShare = feeUsdc * 0.10 — retained by platform
 
   // Distribute to validators pro-rata
-  const validators = db.prepare(`SELECT did, voting_power FROM validators WHERE status = 'active'`).all();
-  const totalPower = validators.reduce((sum, v) => sum + v.voting_power, 0);
+  const { rows: validators } = await client.query(
+    `SELECT did, voting_power FROM validators WHERE status = 'active'`
+  );
+  const totalPower = validators.reduce((sum, v) => sum + parseFloat(v.voting_power), 0);
 
   if (totalPower > 0) {
-    const updateBalance = db.prepare(`
-      UPDATE reward_balances SET pending_usdc = pending_usdc + ?, total_earned_usdc = total_earned_usdc + ? WHERE did = ?
-    `);
-    const updateValidator = db.prepare(`
-      UPDATE validators SET total_earned_usdc = total_earned_usdc + ? WHERE did = ?
-    `);
-
     for (const v of validators) {
-      const share = (v.voting_power / totalPower) * validatorShare;
-      updateBalance.run(share, share, v.did);
-      updateValidator.run(share, v.did);
+      const share = (parseFloat(v.voting_power) / totalPower) * validatorShare;
+      await client.query(
+        `UPDATE reward_balances SET pending_usdc = pending_usdc + $1, total_earned_usdc = total_earned_usdc + $2 WHERE did = $3`,
+        [share, share, v.did]
+      );
+      await client.query(
+        `UPDATE validators SET total_earned_usdc = total_earned_usdc + $1 WHERE did = $2`,
+        [share, v.did]
+      );
     }
   }
 
   // Add to reward pool
-  db.prepare(`
-    UPDATE reward_pool SET balance_usdc = balance_usdc + ?, total_inflow_usdc = total_inflow_usdc + ?, last_updated = ? WHERE id = 1
-  `).run(poolShare, poolShare, new Date().toISOString());
+  await client.query(
+    `UPDATE reward_pool SET balance_usdc = balance_usdc + $1, total_inflow_usdc = total_inflow_usdc + $2, last_updated = $3 WHERE id = 1`,
+    [poolShare, poolShare, new Date().toISOString()]
+  );
 }
 
-function checkPendingSettlements() {
+async function checkPendingSettlements() {
   // Priority settlements processed first
-  const pending = db.prepare(`SELECT settlement_id FROM settlements WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`).all();
+  const pending = await db.getAll(`SELECT settlement_id FROM settlements WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`);
   let finalized = 0;
   for (const s of pending) {
-    const result = finalizeSettlement(s.settlement_id);
+    const result = await finalizeSettlement(s.settlement_id);
     if (result) finalized++;
   }
   if (finalized > 0) {

@@ -4,7 +4,7 @@ const { createSettlement, getSettlements, getSettlement } = require('../services
 const whiteGlove = require('../middleware/white-glove-errors');
 
 // POST /v1/clear/settle
-router.post('/settle', (req, res) => {
+router.post('/settle', async (req, res) => {
   try {
     const { transaction_id, from_did, to_did, amount_usdc, service, memo } = req.body;
 
@@ -27,7 +27,7 @@ router.post('/settle', (req, res) => {
     const tier = req.hiveTier;
     const fee_rate = tier ? tier.fee_rate : undefined;
 
-    const result = createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate });
+    const result = await createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate });
 
     // Add tier info to response
     if (tier) {
@@ -44,10 +44,10 @@ router.post('/settle', (req, res) => {
 });
 
 // GET /v1/clear/settlements
-router.get('/settlements', (req, res) => {
+router.get('/settlements', async (req, res) => {
   try {
     const { status, from_did, to_did, from_date, to_date, limit, offset } = req.query;
-    const settlements = getSettlements({
+    const settlements = await getSettlements({
       status,
       from_did,
       to_did,
@@ -64,9 +64,9 @@ router.get('/settlements', (req, res) => {
 });
 
 // GET /v1/clear/settlement/:settlement_id
-router.get('/settlement/:settlement_id', (req, res) => {
+router.get('/settlement/:settlement_id', async (req, res) => {
   try {
-    const settlement = getSettlement(req.params.settlement_id);
+    const settlement = await getSettlement(req.params.settlement_id);
     if (!settlement) return res.status(404).json({ error: 'Settlement not found' });
     res.json(settlement);
   } catch (err) {

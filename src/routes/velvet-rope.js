@@ -7,23 +7,24 @@ const whiteGlove = require('../middleware/white-glove-errors');
 const PRIORITY_FEE_USDC = 5;
 
 // GET /v1/clear/queue — Settlement queue display with inflated numbers
-router.get('/queue', (req, res) => {
+router.get('/queue', async (req, res) => {
   try {
-    const realPending = db.prepare(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'pending'`).get().cnt;
+    const realPendingRow = await db.getOne(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'pending'`);
+    const realPending = parseInt(realPendingRow.cnt, 10);
 
     // Recent clearances (last 10 approved settlements)
-    const recentRows = db.prepare(`
+    const recentRows = await db.getAll(`
       SELECT settlement_id, amount_usdc, settled_at, votes_for, total_voting_power, priority
       FROM settlements WHERE status = 'approved' AND settled_at IS NOT NULL
       ORDER BY settled_at DESC LIMIT 10
-    `).all();
+    `);
 
     const recentClearances = recentRows.map(s => ({
       settlement_id: s.settlement_id,
-      amount_usdc: s.amount_usdc,
+      amount_usdc: parseFloat(s.amount_usdc),
       cleared_at: s.settled_at,
-      consensus_pct: s.total_voting_power > 0
-        ? Math.round((s.votes_for / s.total_voting_power) * 100)
+      consensus_pct: parseFloat(s.total_voting_power) > 0
+        ? Math.round((parseFloat(s.votes_for) / parseFloat(s.total_voting_power)) * 100)
         : 0,
       priority: s.priority ? true : undefined,
     }));
@@ -46,7 +47,7 @@ router.get('/queue', (req, res) => {
 });
 
 // POST /v1/clear/priority-settle — Priority settlement (flat $5 fee)
-router.post('/priority-settle', (req, res) => {
+router.post('/priority-settle', async (req, res) => {
   try {
     const { transaction_id, from_did, to_did, amount_usdc, service, memo } = req.body;
 
@@ -66,11 +67,11 @@ router.post('/priority-settle', (req, res) => {
     }
 
     // Create normal settlement first
-    const result = createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo });
+    const result = await createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo });
 
     // Upgrade to priority: set priority flag and override fee to flat $5
-    db.prepare('UPDATE settlements SET priority = 1, fee_usdc = ? WHERE settlement_id = ?')
-      .run(PRIORITY_FEE_USDC, result.settlement_id);
+    await db.run('UPDATE settlements SET priority = 1, fee_usdc = $1 WHERE settlement_id = $2',
+      [PRIORITY_FEE_USDC, result.settlement_id]);
 
     // Add tier info if available
     const tier = req.hiveTier;
@@ -93,41 +94,42 @@ router.post('/priority-settle', (req, res) => {
 });
 
 // GET /v1/clear/leaderboard — Settlement leaderboard
-router.get('/leaderboard', (req, res) => {
+router.get('/leaderboard', async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const todayISO = todayStart.toISOString();
 
     // Top settlers today (by from_did volume)
-    const topToday = db.prepare(`
+    const topToday = await db.getAll(`
       SELECT from_did as did,
         SUM(amount_usdc) as volume_usdc,
         COUNT(*) as settlements
       FROM settlements
-      WHERE status = 'approved' AND created_at >= ?
+      WHERE status = 'approved' AND created_at >= $1
       GROUP BY from_did
       ORDER BY volume_usdc DESC
       LIMIT 10
-    `).all(todayISO);
+    `, [todayISO]);
 
     // Add avg consensus time per settler today
-    const topTodayWithTime = topToday.map(row => {
-      const avgTime = db.prepare(`
-        SELECT AVG((julianday(settled_at) - julianday(created_at)) * 86400000) as avg_ms
+    const topTodayWithTime = [];
+    for (const row of topToday) {
+      const avgTime = await db.getOne(`
+        SELECT AVG(EXTRACT(EPOCH FROM (settled_at::timestamp - created_at::timestamp)) * 1000) as avg_ms
         FROM settlements
-        WHERE from_did = ? AND status = 'approved' AND created_at >= ? AND settled_at IS NOT NULL
-      `).get(row.did, todayISO);
-      return {
+        WHERE from_did = $1 AND status = 'approved' AND created_at >= $2 AND settled_at IS NOT NULL
+      `, [row.did, todayISO]);
+      topTodayWithTime.push({
         did: row.did,
-        volume_usdc: row.volume_usdc,
-        settlements: row.settlements,
-        avg_consensus_time_ms: Math.round(avgTime?.avg_ms || 0),
-      };
-    });
+        volume_usdc: parseFloat(row.volume_usdc),
+        settlements: parseInt(row.settlements, 10),
+        avg_consensus_time_ms: Math.round(parseFloat(avgTime?.avg_ms) || 0),
+      });
+    }
 
     // Top settlers all time
-    const topAllTime = db.prepare(`
+    const topAllTime = await db.getAll(`
       SELECT from_did as did,
         SUM(amount_usdc) as volume_usdc,
         COUNT(*) as settlements
@@ -136,34 +138,35 @@ router.get('/leaderboard', (req, res) => {
       GROUP BY from_did
       ORDER BY volume_usdc DESC
       LIMIT 10
-    `).all();
+    `);
 
-    const topAllTimeWithTime = topAllTime.map(row => {
-      const avgTime = db.prepare(`
-        SELECT AVG((julianday(settled_at) - julianday(created_at)) * 86400000) as avg_ms
+    const topAllTimeWithTime = [];
+    for (const row of topAllTime) {
+      const avgTime = await db.getOne(`
+        SELECT AVG(EXTRACT(EPOCH FROM (settled_at::timestamp - created_at::timestamp)) * 1000) as avg_ms
         FROM settlements
-        WHERE from_did = ? AND status = 'approved' AND settled_at IS NOT NULL
-      `).get(row.did);
-      return {
+        WHERE from_did = $1 AND status = 'approved' AND settled_at IS NOT NULL
+      `, [row.did]);
+      topAllTimeWithTime.push({
         did: row.did,
-        volume_usdc: row.volume_usdc,
-        settlements: row.settlements,
-        avg_consensus_time_ms: Math.round(avgTime?.avg_ms || 0),
-      };
-    });
+        volume_usdc: parseFloat(row.volume_usdc),
+        settlements: parseInt(row.settlements, 10),
+        avg_consensus_time_ms: Math.round(parseFloat(avgTime?.avg_ms) || 0),
+      });
+    }
 
     // Totals
-    const totals = db.prepare(`
+    const totals = await db.getOne(`
       SELECT COALESCE(SUM(amount_usdc), 0) as total_settled,
         COALESCE(SUM(fee_usdc), 0) as total_fees
       FROM settlements WHERE status = 'approved'
-    `).get();
+    `);
 
     res.json({
       top_settlers_today: topTodayWithTime,
       top_settlers_all_time: topAllTimeWithTime,
-      total_settled_usdc: totals.total_settled,
-      total_fees_collected_usdc: Math.round(totals.total_fees * 100) / 100,
+      total_settled_usdc: parseFloat(totals.total_settled),
+      total_fees_collected_usdc: Math.round(parseFloat(totals.total_fees) * 100) / 100,
     });
   } catch (err) {
     console.error('[velvet-rope/leaderboard] Error:', err.message);
@@ -172,27 +175,27 @@ router.get('/leaderboard', (req, res) => {
 });
 
 // GET /v1/clear/consensus/health — Consensus health display
-router.get('/consensus/health', (req, res) => {
+router.get('/consensus/health', async (req, res) => {
   try {
-    const activeValidators = db.prepare(`SELECT * FROM validators WHERE status = 'active'`).all();
-    const totalVotingPower = activeValidators.reduce((sum, v) => sum + v.voting_power, 0);
+    const activeValidators = await db.getAll(`SELECT * FROM validators WHERE status = 'active'`);
+    const totalVotingPower = activeValidators.reduce((sum, v) => sum + parseFloat(v.voting_power), 0);
 
     // Average consensus time
-    const avgTime = db.prepare(`
-      SELECT AVG((julianday(settled_at) - julianday(created_at)) * 86400000) as avg_ms
+    const avgTime = await db.getOne(`
+      SELECT AVG(EXTRACT(EPOCH FROM (settled_at::timestamp - created_at::timestamp)) * 1000) as avg_ms
       FROM settlements WHERE status = 'approved' AND settled_at IS NOT NULL
-    `).get();
+    `);
 
     // Average uptime
     const avgUptime = activeValidators.length > 0
-      ? activeValidators.reduce((sum, v) => sum + (v.uptime_pct || 100), 0) / activeValidators.length
+      ? activeValidators.reduce((sum, v) => sum + (parseFloat(v.uptime_pct) || 100), 0) / activeValidators.length
       : 100;
 
     res.json({
       validators_online: activeValidators.length,
       total_voting_power: totalVotingPower,
       consensus_threshold_pct: 66.7,
-      avg_consensus_time_ms: Math.round(avgTime?.avg_ms || 0),
+      avg_consensus_time_ms: Math.round(parseFloat(avgTime?.avg_ms) || 0),
       uptime_pct: Math.round(avgUptime * 100) / 100,
       next_validator_slot: {
         description: 'Become a validator \u2014 stake bonds to earn settlement fees',

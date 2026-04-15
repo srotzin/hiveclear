@@ -4,7 +4,7 @@ const { submitVote, getConsensusStatus } = require('../services/consensus');
 const whiteGlove = require('../middleware/white-glove-errors');
 
 // POST /v1/clear/vote
-router.post('/vote', (req, res) => {
+router.post('/vote', async (req, res) => {
   try {
     const { settlement_id, validator_did, vote, reason } = req.body;
 
@@ -17,7 +17,7 @@ router.post('/vote', (req, res) => {
       return whiteGlove.missingFields(res, { missing, endpoint: 'POST /v1/clear/vote' });
     }
 
-    const result = submitVote({ settlement_id, validator_did, vote, reason });
+    const result = await submitVote({ settlement_id, validator_did, vote, reason });
     if (result.error) {
       // Check if this is a consensus-related failure
       if (result.code === 404 && result.error.includes('not pending')) {
@@ -42,9 +42,9 @@ router.post('/vote', (req, res) => {
 });
 
 // GET /v1/clear/consensus/status
-router.get('/consensus/status', (req, res) => {
+router.get('/consensus/status', async (req, res) => {
   try {
-    const status = getConsensusStatus();
+    const status = await getConsensusStatus();
     res.json(status);
   } catch (err) {
     console.error('[consensus/status] Error:', err.message);
