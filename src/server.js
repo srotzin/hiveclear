@@ -3,6 +3,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 
 const { authMiddleware, SERVICE_KEY } = require('./middleware/auth');
+const { handleMcpRequest } = require('./mcp-tools');
 const { genesisBootstrap } = require('./services/validator');
 const { checkPendingSettlements } = require('./services/settlement');
 const { distributeRewards } = require('./services/rewards');
@@ -199,6 +200,9 @@ const agentCardHandler = (req, res) => {
 };
 app.get('/.well-known/agent.json', agentCardHandler);
 app.get('/.well-known/agent-card.json', agentCardHandler);
+
+// MCP JSON-RPC endpoint (no auth — public for tool discovery)
+app.post('/mcp', express.json(), handleMcpRequest);
 
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
