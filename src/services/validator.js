@@ -1,7 +1,7 @@
 const db = require('./db');
 const { getBondStatus, computeReputation, getAllBondedAgents } = require('./cross-service');
 
-function enrollValidator(did, bondData, reputationData) {
+async function enrollValidator(did, bondData, reputationData) {
   const now = new Date().toISOString();
   const bondAmount = bondData?.bond_amount_usdc || bondData?.bond_amount || 0;
   const reputation = reputationData?.reputation || reputationData?.score || 0;
@@ -14,20 +14,21 @@ function enrollValidator(did, bondData, reputationData) {
     return { error: 'Insufficient reputation. Minimum 500 required.', code: 400 };
   }
 
-  const existing = db.prepare('SELECT did FROM validators WHERE did = ?').get(did);
+  const existing = await db.getOne('SELECT did FROM validators WHERE did = $1', [did]);
   if (existing) {
     return { error: 'Validator already enrolled', code: 409 };
   }
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO validators (did, voting_power, bond_amount_usdc, reputation_at_enrollment, status, enrolled_at, last_heartbeat)
-    VALUES (?, ?, ?, ?, 'active', ?, ?)
-  `).run(did, votingPower, bondAmount, reputation, now, now);
+    VALUES ($1, $2, $3, $4, 'active', $5, $6)
+  `, [did, votingPower, bondAmount, reputation, now, now]);
 
   // Initialize reward balance
-  db.prepare(`
-    INSERT OR IGNORE INTO reward_balances (did, total_earned_usdc, pending_usdc) VALUES (?, 0, 0)
-  `).run(did);
+  await db.run(`
+    INSERT INTO reward_balances (did, total_earned_usdc, pending_usdc) VALUES ($1, 0, 0)
+    ON CONFLICT (did) DO NOTHING
+  `, [did]);
 
   return {
     validator_id: did,
@@ -51,16 +52,16 @@ async function enrollValidatorFromDid(did) {
   return enrollValidator(did, bond, rep);
 }
 
-function getValidators() {
-  return db.prepare('SELECT * FROM validators ORDER BY voting_power DESC').all();
+async function getValidators() {
+  return db.getAll('SELECT * FROM validators ORDER BY voting_power DESC');
 }
 
-function getValidator(did) {
-  return db.prepare('SELECT * FROM validators WHERE did = ?').get(did);
+async function getValidator(did) {
+  return db.getOne('SELECT * FROM validators WHERE did = $1', [did]);
 }
 
-function withdrawValidator(did) {
-  const validator = db.prepare('SELECT * FROM validators WHERE did = ?').get(did);
+async function withdrawValidator(did) {
+  const validator = await db.getOne('SELECT * FROM validators WHERE did = $1', [did]);
   if (!validator) return { error: 'Validator not found', code: 404 };
   if (validator.status === 'withdrawing') return { error: 'Already withdrawing', code: 400 };
   if (validator.status === 'exited') return { error: 'Already exited', code: 400 };
@@ -68,9 +69,9 @@ function withdrawValidator(did) {
   const now = new Date();
   const cooldownUntil = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-  db.prepare(`
-    UPDATE validators SET status = 'withdrawing', withdrawal_initiated_at = ?, cooldown_until = ? WHERE did = ?
-  `).run(now.toISOString(), cooldownUntil.toISOString(), did);
+  await db.run(`
+    UPDATE validators SET status = 'withdrawing', withdrawal_initiated_at = $1, cooldown_until = $2 WHERE did = $3
+  `, [now.toISOString(), cooldownUntil.toISOString(), did]);
 
   return {
     did,
@@ -80,19 +81,20 @@ function withdrawValidator(did) {
   };
 }
 
-function recordHeartbeat(did) {
-  const validator = db.prepare('SELECT * FROM validators WHERE did = ?').get(did);
+async function recordHeartbeat(did) {
+  const validator = await db.getOne('SELECT * FROM validators WHERE did = $1', [did]);
   if (!validator) return { error: 'Validator not found', code: 404 };
   if (validator.status !== 'active') return { error: 'Validator not active', code: 400 };
 
   const now = new Date().toISOString();
-  db.prepare('UPDATE validators SET last_heartbeat = ? WHERE did = ?').run(now, did);
+  await db.run('UPDATE validators SET last_heartbeat = $1 WHERE did = $2', [now, did]);
 
   return { did, last_heartbeat: now, status: 'active' };
 }
 
 async function genesisBootstrap() {
-  const count = db.prepare('SELECT COUNT(*) as cnt FROM validators').get().cnt;
+  const countRow = await db.getOne('SELECT COUNT(*) as cnt FROM validators');
+  const count = parseInt(countRow.cnt, 10);
   if (count > 0) {
     console.log('[genesis] Validators already exist, skipping bootstrap');
     return;
@@ -109,7 +111,7 @@ async function genesisBootstrap() {
     const reputation = agent.reputation || agent.score || 0;
 
     if (reputation >= 500 && bondAmount >= 1000) {
-      const enrollResult = enrollValidator(agent.did, { bond_amount_usdc: bondAmount }, { reputation });
+      const enrollResult = await enrollValidator(agent.did, { bond_amount_usdc: bondAmount }, { reputation });
       if (!enrollResult.error) {
         console.log(`[genesis] Enrolled ${agent.did} — voting power: ${enrollResult.voting_power}`);
         enrolled++;
@@ -120,17 +122,18 @@ async function genesisBootstrap() {
   console.log(`[genesis] Bootstrap complete. Enrolled ${enrolled} genesis validators.`);
 
   // Log total voting power
-  const totalPower = db.prepare(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`).get();
+  const totalPower = await db.getOne(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`);
   console.log(`[genesis] Total voting power: ${totalPower?.total || 0}`);
 }
 
-function getTotalVotingPower() {
-  const row = db.prepare(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`).get();
-  return row?.total || 0;
+async function getTotalVotingPower() {
+  const row = await db.getOne(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`);
+  return parseFloat(row?.total) || 0;
 }
 
-function getActiveValidatorCount() {
-  return db.prepare(`SELECT COUNT(*) as cnt FROM validators WHERE status = 'active'`).get().cnt;
+async function getActiveValidatorCount() {
+  const row = await db.getOne(`SELECT COUNT(*) as cnt FROM validators WHERE status = 'active'`);
+  return parseInt(row.cnt, 10);
 }
 
 module.exports = {

@@ -30,17 +30,21 @@ app.use(cors());
 app.use(express.json());
 
 // Health check (no auth)
-app.get('/health', (req, res) => {
-  const validatorCount = db.prepare('SELECT COUNT(*) as cnt FROM validators').get().cnt;
-  const pendingSettlements = db.prepare(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'pending'`).get().cnt;
-  res.json({
-    status: 'healthy',
-    service: 'hiveclear',
-    version: '1.0.0',
-    validators: validatorCount,
-    pending_settlements: pendingSettlements,
-    timestamp: new Date().toISOString(),
-  });
+app.get('/health', async (req, res) => {
+  try {
+    const validatorCount = await db.getOne('SELECT COUNT(*) as cnt FROM validators');
+    const pendingSettlements = await db.getOne(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'pending'`);
+    res.json({
+      status: 'healthy',
+      service: 'hiveclear',
+      version: '1.0.0',
+      validators: parseInt(validatorCount.cnt, 10),
+      pending_settlements: parseInt(pendingSettlements.cnt, 10),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'unhealthy', error: err.message });
+  }
 });
 
 // Discovery document (no auth)
@@ -219,12 +223,12 @@ app.get('/.well-known/agent-card.json', agentCardHandler);
 app.post('/mcp', express.json(), handleMcpRequest);
 
 // Velocity Doctrine — hive-pulse, robots.txt, ai.json (no auth)
-app.get('/.well-known/hive-pulse.json', (req, res) => {
+app.get('/.well-known/hive-pulse.json', async (req, res) => {
   let settlementCount = 0, volumeToday = 0, consensusRate = 1;
   try {
-    const stats = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(amount_usdc),0) as vol FROM settlements WHERE date(created_at)=date('now')").get();
-    settlementCount = stats?.c || 0;
-    volumeToday = stats?.vol || 0;
+    const stats = await db.getOne("SELECT COUNT(*) as c, COALESCE(SUM(amount_usdc),0) as vol FROM settlements WHERE date(created_at)=CURRENT_DATE::text");
+    settlementCount = parseInt(stats?.c) || 0;
+    volumeToday = parseFloat(stats?.vol) || 0;
   } catch(e) {}
   res.json({
     timestamp: new Date().toISOString(),
@@ -304,21 +308,24 @@ app.use('/v1/clear/stats', statsRoutes);
 app.use('/v1/clear', velvetRopeRoutes);
 
 // Uptime monitor — check heartbeats and update uptime
-function uptimeMonitor() {
-  const validators = db.prepare(`SELECT * FROM validators WHERE status = 'active'`).all();
+async function uptimeMonitor() {
+  const validators = await db.getAll(`SELECT * FROM validators WHERE status = 'active'`);
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   for (const v of validators) {
     if (v.last_heartbeat && v.last_heartbeat < fiveMinutesAgo) {
       // Degrade uptime slightly for missed heartbeat
-      const newUptime = Math.max(0, (v.uptime_pct || 100) - 0.01);
-      db.prepare('UPDATE validators SET uptime_pct = ? WHERE did = ?').run(newUptime, v.did);
+      const newUptime = Math.max(0, (parseFloat(v.uptime_pct) || 100) - 0.01);
+      await db.run('UPDATE validators SET uptime_pct = $1 WHERE did = $2', [newUptime, v.did]);
     }
   }
 }
 
 // Start server
 async function start() {
+  // Initialize database schema
+  await db.initializeSchema();
+
   // Genesis bootstrap
   try {
     await genesisBootstrap();
@@ -328,28 +335,28 @@ async function start() {
 
   // Start background processes
   // 1. Settlement Finalizer — every 60s
-  setInterval(() => {
-    try { checkPendingSettlements(); } catch (err) { console.error('[cron] settlement-finalizer error:', err.message); }
+  setInterval(async () => {
+    try { await checkPendingSettlements(); } catch (err) { console.error('[cron] settlement-finalizer error:', err.message); }
   }, 60 * 1000);
 
   // 2. Reward Distributor — every 24h
-  setInterval(() => {
-    try { distributeRewards(); } catch (err) { console.error('[cron] reward-distributor error:', err.message); }
+  setInterval(async () => {
+    try { await distributeRewards(); } catch (err) { console.error('[cron] reward-distributor error:', err.message); }
   }, 24 * 60 * 60 * 1000);
 
   // 3. Scout Scanner — every 6h
-  setInterval(() => {
-    try { scanForCandidates(); } catch (err) { console.error('[cron] scout-scanner error:', err.message); }
+  setInterval(async () => {
+    try { await scanForCandidates(); } catch (err) { console.error('[cron] scout-scanner error:', err.message); }
   }, 6 * 60 * 60 * 1000);
 
   // 4. Uptime Monitor — every 5 min
-  setInterval(() => {
-    try { uptimeMonitor(); } catch (err) { console.error('[cron] uptime-monitor error:', err.message); }
+  setInterval(async () => {
+    try { await uptimeMonitor(); } catch (err) { console.error('[cron] uptime-monitor error:', err.message); }
   }, 5 * 60 * 1000);
 
   // 5. Slashing Enforcer — every 1h
-  setInterval(() => {
-    try { checkSlashingConditions(); } catch (err) { console.error('[cron] slashing-enforcer error:', err.message); }
+  setInterval(async () => {
+    try { await checkSlashingConditions(); } catch (err) { console.error('[cron] slashing-enforcer error:', err.message); }
   }, 60 * 60 * 1000);
 
   app.listen(PORT, () => {

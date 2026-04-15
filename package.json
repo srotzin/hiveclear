@@ -7,12 +7,18 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"
   },
-  "keywords": ["hive", "settlement", "validator", "consensus", "blockchain"],
+  "keywords": [
+    "hive",
+    "settlement",
+    "validator",
+    "consensus",
+    "blockchain"
+  ],
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
+    "pg": "^8.20.0",
     "uuid": "^10.0.0"
   }
 }

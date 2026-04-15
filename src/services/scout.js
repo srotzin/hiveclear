@@ -15,16 +15,15 @@ async function scanForCandidates() {
     const eligible = reputation >= 500 && bondAmount >= 1000 && ageDays >= 30;
 
     // Check if already a validator
-    const isValidator = db.prepare('SELECT did FROM validators WHERE did = ?').get(agent.did);
+    const isValidator = await db.getOne('SELECT did FROM validators WHERE did = $1', [agent.did]);
     if (isValidator) continue;
 
     // Upsert into scout pipeline
-    db.prepare(`
+    await db.run(`
       INSERT INTO scout_pipeline (did, reputation, bond_amount, age_days, eligible, scanned_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(did) DO UPDATE SET reputation = ?, bond_amount = ?, age_days = ?, eligible = ?, scanned_at = ?
-    `).run(agent.did, reputation, bondAmount, ageDays, eligible ? 1 : 0, now,
-           reputation, bondAmount, ageDays, eligible ? 1 : 0, now);
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT(did) DO UPDATE SET reputation = $2, bond_amount = $3, age_days = $4, eligible = $5, scanned_at = $6
+    `, [agent.did, reputation, bondAmount, ageDays, eligible ? 1 : 0, now]);
 
     candidates.push({
       did: agent.did,
@@ -41,17 +40,17 @@ async function scanForCandidates() {
 }
 
 async function recruitCandidate(did) {
-  const candidate = db.prepare('SELECT * FROM scout_pipeline WHERE did = ?').get(did);
+  const candidate = await db.getOne('SELECT * FROM scout_pipeline WHERE did = $1', [did]);
 
   const result = await postRecruitmentBounty(did, 'Join HiveClear validator set — earn settlement fees proportional to your bond');
 
   const bountyId = result?.bounty_id || `bounty_${Date.now()}`;
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO scout_pipeline (did, reputation, bond_amount, age_days, eligible, outreach_sent, bounty_id, scanned_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-    ON CONFLICT(did) DO UPDATE SET outreach_sent = 1, bounty_id = ?
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, 1, $6, $7)
+    ON CONFLICT(did) DO UPDATE SET outreach_sent = 1, bounty_id = $6
+  `, [
     did,
     candidate?.reputation || 0,
     candidate?.bond_amount || 0,
@@ -59,8 +58,7 @@ async function recruitCandidate(did) {
     candidate?.eligible || 0,
     bountyId,
     new Date().toISOString(),
-    bountyId
-  );
+  ]);
 
   return {
     bounty_id: bountyId,
@@ -70,18 +68,20 @@ async function recruitCandidate(did) {
   };
 }
 
-function getPipelineStats() {
-  const total = db.prepare('SELECT COUNT(*) as cnt FROM scout_pipeline').get().cnt;
-  const eligible = db.prepare('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE eligible = 1').get().cnt;
-  const outreachSent = db.prepare('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE outreach_sent = 1').get().cnt;
-  const enrolled = db.prepare('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE enrolled = 1').get().cnt;
+async function getPipelineStats() {
+  const total = await db.getOne('SELECT COUNT(*) as cnt FROM scout_pipeline');
+  const eligible = await db.getOne('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE eligible = 1');
+  const outreachSent = await db.getOne('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE outreach_sent = 1');
+  const enrolled = await db.getOne('SELECT COUNT(*) as cnt FROM scout_pipeline WHERE enrolled = 1');
+
+  const totalCnt = parseInt(total.cnt, 10);
 
   return {
-    candidates_identified: total,
-    eligible_candidates: eligible,
-    outreach_sent: outreachSent,
-    enrolled,
-    conversion_rate: total > 0 ? Math.round((enrolled / total) * 10000) / 10000 : 0,
+    candidates_identified: totalCnt,
+    eligible_candidates: parseInt(eligible.cnt, 10),
+    outreach_sent: parseInt(outreachSent.cnt, 10),
+    enrolled: parseInt(enrolled.cnt, 10),
+    conversion_rate: totalCnt > 0 ? Math.round((parseInt(enrolled.cnt, 10) / totalCnt) * 10000) / 10000 : 0,
   };
 }
 

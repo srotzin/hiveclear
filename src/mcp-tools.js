@@ -70,7 +70,7 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function executeSubmitSettlement(params) {
+async function executeSubmitSettlement(params) {
   const { parties, settlement_type, memo } = params;
 
   if (!parties || !Array.isArray(parties) || parties.length < 2) {
@@ -85,7 +85,7 @@ function executeSubmitSettlement(params) {
     return { error: 'A positive amount_usdc is required' };
   }
 
-  const result = createSettlement({
+  const result = await createSettlement({
     transaction_id: `txn_${uuidv4().replace(/-/g, '').slice(0, 16)}`,
     from_did: sender.did,
     to_did: receiver.did,
@@ -105,13 +105,13 @@ function executeSubmitSettlement(params) {
   };
 }
 
-function executeGetStatus(params) {
+async function executeGetStatus(params) {
   const { settlement_id } = params;
   if (!settlement_id) {
     return { error: 'settlement_id is required' };
   }
 
-  const settlement = getSettlement(settlement_id);
+  const settlement = await getSettlement(settlement_id);
   if (!settlement) {
     return { error: 'Settlement not found' };
   }
@@ -119,16 +119,16 @@ function executeGetStatus(params) {
   return {
     settlement_id: settlement.settlement_id,
     status: settlement.status,
-    amount_usdc: settlement.amount_usdc,
-    fee_usdc: settlement.fee_usdc,
+    amount_usdc: parseFloat(settlement.amount_usdc),
+    fee_usdc: parseFloat(settlement.fee_usdc),
     from: settlement.from_did,
     to: settlement.to_did,
     votes: {
-      for: settlement.votes_for,
-      against: settlement.votes_against,
-      abstain: settlement.votes_abstain,
+      for: parseFloat(settlement.votes_for),
+      against: parseFloat(settlement.votes_against),
+      abstain: parseFloat(settlement.votes_abstain),
     },
-    total_voting_power: settlement.total_voting_power,
+    total_voting_power: parseFloat(settlement.total_voting_power),
     threshold_met: !!settlement.threshold_met,
     created_at: settlement.created_at,
     settled_at: settlement.settled_at,
@@ -136,35 +136,36 @@ function executeGetStatus(params) {
   };
 }
 
-function executeGetStats() {
+async function executeGetStats() {
   const today = new Date().toISOString().split('T')[0];
 
-  const volumeToday =
-    db
-      .prepare(
-        `SELECT SUM(amount_usdc) as total FROM settlements WHERE status = 'approved' AND settled_at >= ?`
-      )
-      .get(today).total || 0;
+  const volumeTodayRow = await db.getOne(
+    `SELECT SUM(amount_usdc) as total FROM settlements WHERE status = 'approved' AND settled_at >= $1`,
+    [today]
+  );
+  const volumeToday = parseFloat(volumeTodayRow?.total) || 0;
 
-  const feesToday =
-    db
-      .prepare(
-        `SELECT SUM(fee_usdc) as total FROM settlements WHERE status = 'approved' AND settled_at >= ?`
-      )
-      .get(today).total || 0;
+  const feesTodayRow = await db.getOne(
+    `SELECT SUM(fee_usdc) as total FROM settlements WHERE status = 'approved' AND settled_at >= $1`,
+    [today]
+  );
+  const feesToday = parseFloat(feesTodayRow?.total) || 0;
 
-  const totalResolved =
-    db
-      .prepare(`SELECT COUNT(*) as cnt FROM settlements WHERE status IN ('approved', 'rejected')`)
-      .get().cnt;
+  const totalResolvedRow = await db.getOne(
+    `SELECT COUNT(*) as cnt FROM settlements WHERE status IN ('approved', 'rejected')`
+  );
+  const totalResolved = parseInt(totalResolvedRow.cnt, 10);
 
-  const totalApproved =
-    db.prepare(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'approved'`).get().cnt;
+  const totalApprovedRow = await db.getOne(
+    `SELECT COUNT(*) as cnt FROM settlements WHERE status = 'approved'`
+  );
+  const totalApproved = parseInt(totalApprovedRow.cnt, 10);
 
   const consensusRate =
     totalResolved > 0 ? Math.round((totalApproved / totalResolved) * 10000) / 10000 : 1;
 
-  const totalSettlements = db.prepare('SELECT COUNT(*) as cnt FROM settlements').get().cnt;
+  const totalSettlementsRow = await db.getOne('SELECT COUNT(*) as cnt FROM settlements');
+  const totalSettlements = parseInt(totalSettlementsRow.cnt, 10);
 
   return {
     volume_today_usdc: Math.round(volumeToday * 100) / 100,
@@ -174,19 +175,19 @@ function executeGetStats() {
   };
 }
 
-function executeListValidators() {
-  const validators = db
-    .prepare(`SELECT * FROM validators WHERE status = 'active' ORDER BY voting_power DESC`)
-    .all();
+async function executeListValidators() {
+  const validators = await db.getAll(
+    `SELECT * FROM validators WHERE status = 'active' ORDER BY voting_power DESC`
+  );
 
   return {
     validators: validators.map((v) => ({
       did: v.did,
-      voting_power: v.voting_power,
-      bond_amount_usdc: v.bond_amount_usdc,
-      uptime_pct: v.uptime_pct,
+      voting_power: parseFloat(v.voting_power),
+      bond_amount_usdc: parseFloat(v.bond_amount_usdc),
+      uptime_pct: parseFloat(v.uptime_pct),
       blocks_validated: v.blocks_validated,
-      total_earned_usdc: v.total_earned_usdc,
+      total_earned_usdc: parseFloat(v.total_earned_usdc),
       enrolled_at: v.enrolled_at,
     })),
     total: validators.length,
@@ -247,22 +248,24 @@ function handleMcpRequest(req, res) {
       });
     }
 
-    try {
-      const result = handler(toolArgs);
-      return res.json({
-        jsonrpc: '2.0',
-        id,
-        result: {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
-        },
+    handler(toolArgs)
+      .then((result) => {
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+          },
+        });
+      })
+      .catch((err) => {
+        res.json({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32603, message: err.message },
+        });
       });
-    } catch (err) {
-      return res.json({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32603, message: err.message },
-      });
-    }
+    return;
   }
 
   return res.json({

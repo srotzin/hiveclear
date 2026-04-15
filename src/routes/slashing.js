@@ -21,9 +21,9 @@ router.post('/slash', async (req, res) => {
 });
 
 // GET /v1/clear/slashing/history
-router.get('/slashing/history', (req, res) => {
+router.get('/slashing/history', async (req, res) => {
   try {
-    const events = getSlashingHistory();
+    const events = await getSlashingHistory();
     res.json({ events, total: events.length });
   } catch (err) {
     console.error('[slashing/history] Error:', err.message);

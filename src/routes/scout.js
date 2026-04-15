@@ -25,9 +25,9 @@ router.post('/recruit/:did', async (req, res) => {
 });
 
 // GET /v1/clear/scout/pipeline
-router.get('/pipeline', (req, res) => {
+router.get('/pipeline', async (req, res) => {
   try {
-    const stats = getPipelineStats();
+    const stats = await getPipelineStats();
     res.json(stats);
   } catch (err) {
     console.error('[scout/pipeline] Error:', err.message);

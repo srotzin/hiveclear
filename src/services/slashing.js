@@ -13,13 +13,13 @@ async function slashValidator({ validator_did, reason, evidence }) {
     return { error: 'Invalid reason. Must be downtime, equivocation, or censorship.', code: 400 };
   }
 
-  const validator = db.prepare('SELECT * FROM validators WHERE did = ?').get(validator_did);
+  const validator = await db.getOne('SELECT * FROM validators WHERE did = $1', [validator_did]);
   if (!validator) {
     return { error: 'Validator not found', code: 404 };
   }
 
   const rate = SLASH_RATES[reason];
-  const amountSlashed = Math.round(validator.bond_amount_usdc * rate * 100) / 100;
+  const amountSlashed = Math.round(parseFloat(validator.bond_amount_usdc) * rate * 100) / 100;
 
   const slashId = `slash_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
   const now = new Date().toISOString();
@@ -28,21 +28,21 @@ async function slashValidator({ validator_did, reason, evidence }) {
   const lawResult = await fileSlashingAction(validator_did, reason, evidence, amountSlashed);
 
   // Record slashing event
-  db.prepare(`
+  await db.run(`
     INSERT INTO slashing_events (slash_id, validator_did, reason, evidence, amount_slashed_usdc, hivelaw_case_id, slashed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(slashId, validator_did, reason, JSON.stringify(evidence || {}), amountSlashed, lawResult?.case_id || null, now);
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+  `, [slashId, validator_did, reason, JSON.stringify(evidence || {}), amountSlashed, lawResult?.case_id || null, now]);
 
   // Update validator
   if (reason === 'equivocation') {
-    db.prepare(`UPDATE validators SET status = 'slashed', bond_amount_usdc = 0, voting_power = 0 WHERE did = ?`).run(validator_did);
+    await db.run(`UPDATE validators SET status = 'slashed', bond_amount_usdc = 0, voting_power = 0 WHERE did = $1`, [validator_did]);
   } else {
-    const newBond = Math.max(0, validator.bond_amount_usdc - amountSlashed);
+    const newBond = Math.max(0, parseFloat(validator.bond_amount_usdc) - amountSlashed);
     const newPower = Math.floor(newBond / 1000);
-    db.prepare('UPDATE validators SET bond_amount_usdc = ?, voting_power = ? WHERE did = ?').run(newBond, newPower, validator_did);
+    await db.run('UPDATE validators SET bond_amount_usdc = $1, voting_power = $2 WHERE did = $3', [newBond, newPower, validator_did]);
 
     if (newPower < 1) {
-      db.prepare(`UPDATE validators SET status = 'slashed' WHERE did = ?`).run(validator_did);
+      await db.run(`UPDATE validators SET status = 'slashed' WHERE did = $1`, [validator_did]);
     }
   }
 
@@ -57,22 +57,22 @@ async function slashValidator({ validator_did, reason, evidence }) {
   };
 }
 
-function getSlashingHistory() {
-  return db.prepare('SELECT * FROM slashing_events ORDER BY slashed_at DESC').all();
+async function getSlashingHistory() {
+  return db.getAll('SELECT * FROM slashing_events ORDER BY slashed_at DESC');
 }
 
-function checkSlashingConditions() {
+async function checkSlashingConditions() {
   // Check validators with low uptime
-  const validators = db.prepare(`SELECT * FROM validators WHERE status = 'active'`).all();
+  const validators = await db.getAll(`SELECT * FROM validators WHERE status = 'active'`);
   let slashed = 0;
 
   for (const v of validators) {
-    if (v.uptime_pct < 99) {
+    if (parseFloat(v.uptime_pct) < 99) {
       // Auto-slash for downtime
       slashValidator({
         validator_did: v.did,
         reason: 'downtime',
-        evidence: { uptime_pct: v.uptime_pct, checked_at: new Date().toISOString() },
+        evidence: { uptime_pct: parseFloat(v.uptime_pct), checked_at: new Date().toISOString() },
       }).then(result => {
         if (!result.error) {
           console.log(`[slashing-enforcer] Slashed ${v.did} for downtime (uptime: ${v.uptime_pct}%)`);

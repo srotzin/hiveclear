@@ -1,16 +1,16 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 
-function getRewardBalance(did) {
-  const balance = db.prepare('SELECT * FROM reward_balances WHERE did = ?').get(did);
+async function getRewardBalance(did) {
+  const balance = await db.getOne('SELECT * FROM reward_balances WHERE did = $1', [did]);
   if (!balance) {
     return { did, total_earned_usdc: 0, pending_usdc: 0, last_distribution: null, breakdown: { settlement_fees: 0, pool_rewards: 0 } };
   }
 
   // Get breakdown from distributions
-  const distributions = db.prepare(`
+  const distributions = await db.getAll(`
     SELECT distribution_details FROM reward_distributions ORDER BY distributed_at DESC LIMIT 10
-  `).all();
+  `);
 
   let poolRewards = 0;
   for (const d of distributions) {
@@ -21,62 +21,74 @@ function getRewardBalance(did) {
     } catch {}
   }
 
+  const totalEarned = parseFloat(balance.total_earned_usdc);
+  const pendingUsdc = parseFloat(balance.pending_usdc);
+
   return {
     did,
-    total_earned_usdc: Math.round(balance.total_earned_usdc * 100) / 100,
-    pending_usdc: Math.round(balance.pending_usdc * 100) / 100,
+    total_earned_usdc: Math.round(totalEarned * 100) / 100,
+    pending_usdc: Math.round(pendingUsdc * 100) / 100,
     last_distribution: balance.last_distribution_at,
     breakdown: {
-      settlement_fees: Math.round((balance.total_earned_usdc - poolRewards) * 100) / 100,
+      settlement_fees: Math.round((totalEarned - poolRewards) * 100) / 100,
       pool_rewards: Math.round(poolRewards * 100) / 100,
     },
   };
 }
 
-function distributeRewards() {
-  const pool = db.prepare('SELECT * FROM reward_pool WHERE id = 1').get();
-  if (!pool || pool.balance_usdc <= 0) {
+async function distributeRewards() {
+  const pool = await db.getOne('SELECT * FROM reward_pool WHERE id = 1');
+  if (!pool || parseFloat(pool.balance_usdc) <= 0) {
     return { distribution_id: null, total_distributed_usdc: 0, validators_paid: 0, message: 'No funds in pool' };
   }
 
-  const validators = db.prepare(`SELECT did, voting_power FROM validators WHERE status = 'active'`).all();
-  const totalPower = validators.reduce((sum, v) => sum + v.voting_power, 0);
+  const validators = await db.getAll(`SELECT did, voting_power FROM validators WHERE status = 'active'`);
+  const totalPower = validators.reduce((sum, v) => sum + parseFloat(v.voting_power), 0);
   if (totalPower === 0 || validators.length === 0) {
     return { distribution_id: null, total_distributed_usdc: 0, validators_paid: 0, message: 'No active validators' };
   }
 
   const distributionId = `dist_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
   const now = new Date().toISOString();
-  const amountToDistribute = pool.balance_usdc;
+  const amountToDistribute = parseFloat(pool.balance_usdc);
   const details = [];
 
-  const updateBalance = db.prepare(`
-    UPDATE reward_balances SET pending_usdc = pending_usdc + ?, total_earned_usdc = total_earned_usdc + ?, last_distribution_at = ? WHERE did = ?
-  `);
-  const updateValidator = db.prepare(`
-    UPDATE validators SET total_earned_usdc = total_earned_usdc + ? WHERE did = ?
-  `);
+  const client = await db.getClient();
+  try {
+    await client.query('BEGIN');
 
-  const distribute = db.transaction(() => {
     for (const v of validators) {
-      const share = (v.voting_power / totalPower) * amountToDistribute;
+      const share = (parseFloat(v.voting_power) / totalPower) * amountToDistribute;
       const rounded = Math.round(share * 100) / 100;
-      updateBalance.run(rounded, rounded, now, v.did);
-      updateValidator.run(rounded, v.did);
-      details.push({ did: v.did, voting_power: v.voting_power, amount: rounded });
+      await client.query(
+        `UPDATE reward_balances SET pending_usdc = pending_usdc + $1, total_earned_usdc = total_earned_usdc + $2, last_distribution_at = $3 WHERE did = $4`,
+        [rounded, rounded, now, v.did]
+      );
+      await client.query(
+        `UPDATE validators SET total_earned_usdc = total_earned_usdc + $1 WHERE did = $2`,
+        [rounded, v.did]
+      );
+      details.push({ did: v.did, voting_power: parseFloat(v.voting_power), amount: rounded });
     }
 
-    db.prepare(`
-      UPDATE reward_pool SET balance_usdc = 0, total_distributed_usdc = total_distributed_usdc + ?, last_updated = ? WHERE id = 1
-    `).run(amountToDistribute, now);
+    await client.query(
+      `UPDATE reward_pool SET balance_usdc = 0, total_distributed_usdc = total_distributed_usdc + $1, last_updated = $2 WHERE id = 1`,
+      [amountToDistribute, now]
+    );
 
-    db.prepare(`
-      INSERT INTO reward_distributions (distribution_id, total_distributed_usdc, validators_paid, distribution_details, distributed_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(distributionId, amountToDistribute, validators.length, JSON.stringify(details), now);
-  });
+    await client.query(
+      `INSERT INTO reward_distributions (distribution_id, total_distributed_usdc, validators_paid, distribution_details, distributed_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [distributionId, amountToDistribute, validators.length, JSON.stringify(details), now]
+    );
 
-  distribute();
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   console.log(`[reward-distributor] Distributed $${amountToDistribute.toFixed(2)} to ${validators.length} validators`);
 
@@ -88,22 +100,22 @@ function distributeRewards() {
   };
 }
 
-function getRewardPool() {
-  const pool = db.prepare('SELECT * FROM reward_pool WHERE id = 1').get();
-  const lastDist = db.prepare('SELECT distributed_at FROM reward_distributions ORDER BY distributed_at DESC LIMIT 1').get();
+async function getRewardPool() {
+  const pool = await db.getOne('SELECT * FROM reward_pool WHERE id = 1');
+  const lastDist = await db.getOne('SELECT distributed_at FROM reward_distributions ORDER BY distributed_at DESC LIMIT 1');
 
   // Estimate daily inflow from recent settlements
-  const recentFees = db.prepare(`
+  const recentFees = await db.getOne(`
     SELECT SUM(fee_usdc) as total FROM settlements
-    WHERE status = 'approved' AND settled_at >= datetime('now', '-1 day')
-  `).get();
-  const dailyInflow = (recentFees?.total || 0) * 0.20; // 20% of fees go to pool
+    WHERE status = 'approved' AND settled_at >= (NOW() - INTERVAL '1 day')::text
+  `);
+  const dailyInflow = (parseFloat(recentFees?.total) || 0) * 0.20; // 20% of fees go to pool
 
   return {
-    pool_balance_usdc: Math.round((pool?.balance_usdc || 0) * 100) / 100,
+    pool_balance_usdc: Math.round((parseFloat(pool?.balance_usdc) || 0) * 100) / 100,
     daily_inflow_usdc: Math.round(dailyInflow * 100) / 100,
     next_distribution: lastDist ? new Date(new Date(lastDist.distributed_at).getTime() + 24 * 60 * 60 * 1000).toISOString() : 'pending',
-    total_distributed_usdc: Math.round((pool?.total_distributed_usdc || 0) * 100) / 100,
+    total_distributed_usdc: Math.round((parseFloat(pool?.total_distributed_usdc) || 0) * 100) / 100,
   };
 }
 

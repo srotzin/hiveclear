@@ -19,9 +19,9 @@ router.post('/enroll', async (req, res) => {
 });
 
 // GET /v1/clear/validators
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const validators = getValidators();
+    const validators = await getValidators();
     res.json({ validators, total: validators.length });
   } catch (err) {
     console.error('[validators/list] Error:', err.message);
@@ -30,9 +30,9 @@ router.get('/', (req, res) => {
 });
 
 // GET /v1/clear/validators/:did
-router.get('/:did', (req, res) => {
+router.get('/:did', async (req, res) => {
   try {
-    const validator = getValidator(req.params.did);
+    const validator = await getValidator(req.params.did);
     if (!validator) return res.status(404).json({ error: 'Validator not found' });
     res.json(validator);
   } catch (err) {
@@ -42,9 +42,9 @@ router.get('/:did', (req, res) => {
 });
 
 // POST /v1/clear/validators/withdraw/:did
-router.post('/withdraw/:did', (req, res) => {
+router.post('/withdraw/:did', async (req, res) => {
   try {
-    const result = withdrawValidator(req.params.did);
+    const result = await withdrawValidator(req.params.did);
     if (result.error) return res.status(result.code || 400).json({ error: result.error });
     res.json(result);
   } catch (err) {
@@ -54,12 +54,12 @@ router.post('/withdraw/:did', (req, res) => {
 });
 
 // POST /v1/clear/validators/heartbeat
-router.post('/heartbeat', (req, res) => {
+router.post('/heartbeat', async (req, res) => {
   try {
     const { did } = req.body;
     if (!did) return res.status(400).json({ error: 'did is required' });
 
-    const result = recordHeartbeat(did);
+    const result = await recordHeartbeat(did);
     if (result.error) return res.status(result.code || 400).json({ error: result.error });
     res.json(result);
   } catch (err) {
