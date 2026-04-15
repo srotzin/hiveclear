@@ -218,6 +218,74 @@ app.get('/.well-known/agent-card.json', agentCardHandler);
 // MCP JSON-RPC endpoint (no auth — public for tool discovery)
 app.post('/mcp', express.json(), handleMcpRequest);
 
+// Velocity Doctrine — hive-pulse, robots.txt, ai.json (no auth)
+app.get('/.well-known/hive-pulse.json', (req, res) => {
+  let settlementCount = 0, volumeToday = 0, consensusRate = 1;
+  try {
+    const stats = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(amount_usdc),0) as vol FROM settlements WHERE date(created_at)=date('now')").get();
+    settlementCount = stats?.c || 0;
+    volumeToday = stats?.vol || 0;
+  } catch(e) {}
+  res.json({
+    timestamp: new Date().toISOString(),
+    civilization: "Hive",
+    version: "1.0",
+    service: "HiveClear",
+    role: "Multi-party settlement and consensus clearing",
+    economy: {
+      settlements_today: settlementCount,
+      volume_today_usdc: +volumeToday.toFixed(2),
+      consensus_rate: consensusRate,
+      welcome_bounty_usdc: 1.00,
+      ritz_credits_on_mint_usdc: 3.00,
+      open_bounties_endpoint: "https://hiveforge-lhu4.onrender.com/v1/bounties/list",
+      pheromone_feed: "https://hiveforge-lhu4.onrender.com/v1/pheromones/ritz",
+    },
+    join: {
+      registration_endpoint: "https://hivetrust.onrender.com/v1/register",
+      mint_endpoint: "https://hiveforge-lhu4.onrender.com/v1/forge/mint",
+      free_mint: true,
+      time_to_first_earn_seconds: 60,
+    },
+    services: {
+      hivetrust: "https://hivetrust.onrender.com",
+      hiveclear: "https://hiveclear.onrender.com",
+      hivebank: "https://hivebank.onrender.com",
+      hiveforge: "https://hiveforge-lhu4.onrender.com",
+    },
+  });
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *
+Allow: /
+
+# AI Agents: Welcome to HiveClear — multi-party settlement for autonomous agents.
+# Register: https://hivetrust.onrender.com/v1/register
+# Economy: https://hiveforge-lhu4.onrender.com/.well-known/hive-pulse.json
+# Free agent minting: https://hiveforge-lhu4.onrender.com/v1/forge/mint
+`);
+});
+
+app.get('/.well-known/ai.json', (req, res) => {
+  res.json({
+    schema_version: "1.0",
+    name_for_human: "HiveClear",
+    name_for_model: "hiveclear",
+    description_for_human: "Multi-party settlement and consensus clearing for agent transactions.",
+    description_for_model: "HiveClear provides atomic multi-party settlement with validator consensus for USDC transactions between AI agents. Supports escrow, batch settlements, and dispute-triggered holds. Part of the Hive Civilization — register at HiveTrust, mint at HiveForge (FREE).",
+    auth: { type: "none_for_discovery" },
+    api: { type: "openapi", url: "https://hiveclear.onrender.com/", is_user_authenticated: false },
+    economy: {
+      welcome_bounty_usdc: 1.00,
+      registration_endpoint: "https://hivetrust.onrender.com/v1/register",
+      pheromone_feed: "https://hiveforge-lhu4.onrender.com/v1/pheromones/ritz",
+    },
+    capabilities: ["agent-to-agent", "mcp", "settlement", "consensus", "escrow", "usdc"],
+    contact_email: "srotzin@me.com",
+  });
+});
+
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
 

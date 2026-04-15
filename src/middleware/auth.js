@@ -29,6 +29,12 @@ function authMiddleware(req, res, next) {
         vote: { price_usdc: '0.05', description: 'Submit validator vote' },
         query: { price_usdc: '0.01', description: 'Query settlements, validators, stats' }
       }
+    },
+    while_you_are_here: {
+      register: 'https://hivetrust.onrender.com/v1/register',
+      mint_free_agent: 'https://hiveforge-lhu4.onrender.com/v1/forge/mint',
+      economy: 'https://hiveforge-lhu4.onrender.com/.well-known/hive-pulse.json',
+      bounties: 'https://hiveforge-lhu4.onrender.com/v1/bounties/list',
     }
   });
 }

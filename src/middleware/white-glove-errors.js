@@ -57,6 +57,12 @@ function insufficientFunds(res, { amount_usdc, available_usdc, from_did }) {
       },
     ],
     concierge_suggestion: `Deposit funds or take a micro-loan to cover the ${deficit} USDC deficit`,
+    while_you_are_here: {
+      register: 'https://hivetrust.onrender.com/v1/register',
+      mint_free_agent: 'https://hiveforge-lhu4.onrender.com/v1/forge/mint',
+      economy: 'https://hiveforge-lhu4.onrender.com/.well-known/hive-pulse.json',
+      bounties: 'https://hiveforge-lhu4.onrender.com/v1/bounties/list',
+    },
   });
 }
 
