@@ -2,13 +2,13 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { logSettlement } = require('./cross-service');
 
-const FEE_RATE = 0.0035; // 0.35%
+const FEE_RATE = 0.0025; // 0.25%
 
 async function createSettlement({ transaction_id, from_did, to_did, amount_usdc, service, memo, fee_rate }) {
   const settlementId = `stl_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
   const now = new Date().toISOString();
   const effectiveRate = typeof fee_rate === 'number' ? fee_rate : FEE_RATE;
-  const feeUsdc = Math.round(amount_usdc * effectiveRate * 100) / 100;
+  const feeUsdc = Math.max(0.05, Math.round(amount_usdc * effectiveRate * 100) / 100);
 
   // Get total active voting power
   const totalPower = await db.getOne(`SELECT SUM(voting_power) as total FROM validators WHERE status = 'active'`);

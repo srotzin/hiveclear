@@ -2,9 +2,9 @@ const { v4: uuidv4 } = require('uuid');
 
 // Reputation tiers with settlement limits, consensus type, and fee rates
 const TIERS = {
-  public:   { name: 'public',   min: 0,   max: 49,  limit: 10000,  consensus: 'standard', fee_rate: 0.0035 },
-  silver:   { name: 'silver',   min: 50,  max: 199, limit: 50000,  consensus: 'priority', fee_rate: 0.0035 },
-  gold:     { name: 'gold',     min: 200, max: 499, limit: 250000, consensus: 'instant',  fee_rate: 0.0025 },
+  public:   { name: 'public',   min: 0,   max: 49,  limit: 10000,  consensus: 'standard', fee_rate: 0.0025 },
+  silver:   { name: 'silver',   min: 50,  max: 199, limit: 50000,  consensus: 'priority', fee_rate: 0.0025 },
+  gold:     { name: 'gold',     min: 200, max: 499, limit: 250000, consensus: 'instant',  fee_rate: 0.0020 },
   platinum: { name: 'platinum', min: 500, max: Infinity, limit: Infinity, consensus: 'instant', fee_rate: 0.0010 },
 };
 
