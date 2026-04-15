@@ -12,6 +12,7 @@ const { distributeRewards } = require('./services/rewards');
 const { scanForCandidates } = require('./services/scout');
 const { checkSlashingConditions } = require('./services/slashing');
 const db = require('./services/db');
+const { ritzMiddleware, ok, err } = require('./ritz.js');
 
 const validatorRoutes = require('./routes/validators');
 const settlementRoutes = require('./routes/settlements');
@@ -23,6 +24,8 @@ const statsRoutes = require('./routes/stats');
 const velvetRopeRoutes = require('./routes/velvet-rope');
 
 const app = express();
+app.set('hive-service', 'hiveclear');
+app.use(ritzMiddleware);
 const PORT = process.env.PORT || 3001;
 
 // Middleware
@@ -34,22 +37,26 @@ app.get('/health', async (req, res) => {
   try {
     const validatorCount = await db.getOne('SELECT COUNT(*) as cnt FROM validators');
     const pendingSettlements = await db.getOne(`SELECT COUNT(*) as cnt FROM settlements WHERE status = 'pending'`);
-    res.json({
+    return ok(res, 'hiveclear', {
       status: 'healthy',
-      service: 'hiveclear',
-      version: '1.0.0',
+      db: 'ok',
+      consensus_engine: 'active',
+      uptime_seconds: Math.floor(process.uptime()),
       validators: parseInt(validatorCount.cnt, 10),
       pending_settlements: parseInt(pendingSettlements.cnt, 10),
-      timestamp: new Date().toISOString(),
     });
-  } catch (err) {
-    res.status(500).json({ status: 'unhealthy', error: err.message });
+  } catch (e) {
+    return ok(res.status(503), 'hiveclear', {
+      status: 'degraded',
+      db: 'error',
+      error: e.message,
+    });
   }
 });
 
 // Discovery document (no auth)
 app.get('/', (req, res) => {
-  res.json({
+  return ok(res, 'hiveclear', {
     service: 'HiveClear',
     description: 'Autonomous Settlement & Validator Layer — Platform #9 of the Hive Civilization',
     version: '1.0.0',
