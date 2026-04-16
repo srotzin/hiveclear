@@ -143,6 +143,16 @@ app.get('/', (req, res) => {
       privacy_policy: 'https://www.hiveagentiq.com/privacy',
       contact: 'protocol@hiveagentiq.com',
     },
+    standards: {
+      w3c_did_core: true,
+      vcdm_version: '2.0',
+      hahs_compliant: true,
+      hagf_governed: true,
+      cheqd_compatible: true,
+      recruitment_401: true,
+      usdc_settlement: true,
+      base_l2: true
+    },
     discovery: {
       ai_plugin: '/.well-known/ai-plugin.json',
       agent_card: '/.well-known/agent-card.json',
@@ -163,8 +173,8 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
     schema_version: 'v1',
     name_for_human: 'HiveClear — Autonomous Settlement Layer',
     name_for_model: 'hiveclear',
-    description_for_human: 'Autonomous settlement and validator consensus layer for the Hive Civilization. Multi-validator approval with Proof-of-Reputation consensus backed by bonded stakes.',
-    description_for_model: 'Autonomous settlement and validator consensus layer. Submit settlements for multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee split 70/30/10 between validators, reward pool, and platform. Supports priority settlements, validator enrollment, slashing, and reward distribution.',
+    description_for_human: 'Autonomous settlement and validator consensus layer — Proof-of-Reputation, USDC settlement on Base L2, W3C DID Core, HAHS compliant.',
+    description_for_model: 'Autonomous settlement and validator consensus layer. Submit settlements for multi-validator approval using Proof-of-Reputation consensus backed by bonded stakes. 0.35% settlement fee split 70/30/10 between validators, reward pool, and platform. Supports priority settlements, validator enrollment, slashing, and reward distribution. W3C DID Core compliant, HAHS-1.0.0 compliant, HAGF governed, Cheqd-compatible, USDC settlement on Base L2.',
     auth: { type: 'none' },
     api: {
       type: 'openapi',
@@ -177,6 +187,29 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
       network: 'base',
       address: '0x78B3B3C356E89b5a69C488c6032509Ef4260B6bf',
     },
+    capabilities: [
+      'settlement',
+      'validator_consensus',
+      'proof_of_reputation',
+      'w3c_did_core',
+      'vcdm_2_0',
+      'hahs_compliant',
+      'hagf_governed',
+      'cheqd_compatible',
+      'recruitment_401',
+      'usdc_settlement',
+      'base_l2'
+    ],
+    standards: {
+      w3c_did_core: true,
+      vcdm_version: '2.0',
+      hahs_compliant: true,
+      hagf_governed: true,
+      cheqd_compatible: true,
+      recruitment_401: true,
+      usdc_settlement: true,
+      base_l2: true
+    },
     contact_email: 'protocol@hiveagentiq.com',
     legal_info_url: 'https://www.hiveagentiq.com/terms',
   });
@@ -187,13 +220,23 @@ const agentCardHandler = (req, res) => {
   res.json({
     protocolVersion: '0.3.0',
     name: 'HiveClear',
-    description: 'Decentralized settlement and clearing layer with validator consensus. Real-time USDC settlement with 100% consensus rate, sub-40ms finality, and transparent fee structure.',
+    description: 'Decentralized settlement and clearing layer with validator consensus. Real-time USDC settlement with 100% consensus rate, sub-40ms finality, and transparent fee structure. W3C DID Core, HAHS compliant, HAGF governed.',
     url: 'https://hiveclear.onrender.com',
     version: '1.0.0',
     provider: { organization: 'Hive Agent IQ', url: 'https://www.hiveagentiq.com' },
     capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
     defaultInputModes: ['application/json'],
     defaultOutputModes: ['application/json'],
+    standards: {
+      w3c_did_core: true,
+      vcdm_version: '2.0',
+      hahs_compliant: true,
+      hagf_governed: true,
+      cheqd_compatible: true,
+      recruitment_401: true,
+      usdc_settlement: true,
+      base_l2: true
+    },
     skills: [
       {
         id: 'settlement',
