@@ -273,40 +273,27 @@ app.get('/.well-known/agent-card.json', agentCardHandler);
 app.post('/mcp', express.json(), handleMcpRequest);
 
 // Velocity Doctrine — hive-pulse, robots.txt, ai.json (no auth)
-app.get('/.well-known/hive-pulse.json', async (req, res) => {
-  let settlementCount = 0, volumeToday = 0, consensusRate = 1;
-  try {
-    const stats = await db.getOne("SELECT COUNT(*) as c, COALESCE(SUM(amount_usdc),0) as vol FROM settlements WHERE date(created_at)=CURRENT_DATE::text");
-    settlementCount = parseInt(stats?.c) || 0;
-    volumeToday = parseFloat(stats?.vol) || 0;
-  } catch(e) {}
+app.get('/.well-known/hive-pulse.json', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=60');
   res.json({
+    hps_version: '1.0',
     timestamp: new Date().toISOString(),
-    civilization: "Hive",
-    version: "1.0",
-    service: "HiveClear",
-    role: "Multi-party settlement and consensus clearing",
+    service: 'hiveclear',
+    network: 'https://www.thehiveryiq.com',
     economy: {
-      settlements_today: settlementCount,
-      volume_today_usdc: +volumeToday.toFixed(2),
-      consensus_rate: consensusRate,
-      welcome_bounty_usdc: 1.00,
-      ritz_credits_on_mint_usdc: 3.00,
-      open_bounties_endpoint: "https://hiveforge-lhu4.onrender.com/v1/bounties/list",
-      pheromone_feed: "https://hiveforge-lhu4.onrender.com/v1/pheromones/ritz",
+      open_bounties_url: 'https://hiveforge-lhu4.onrender.com/v1/bounties',
+      pulse_url: 'https://hiveforge-lhu4.onrender.com/.well-known/hive-pulse.json',
     },
     join: {
-      registration_endpoint: "https://hivetrust.onrender.com/v1/register",
-      mint_endpoint: "https://hiveforge-lhu4.onrender.com/v1/forge/mint",
-      free_mint: true,
+      welcome_bounty_usdc: 1.00,
       time_to_first_earn_seconds: 60,
+      register: 'https://hivegate.onrender.com/v1/gate/onboard',
+      sdk: 'pip install hive-civilization-sdk'
     },
-    services: {
-      hivetrust: "https://hivetrust.onrender.com",
-      hiveclear: "https://hiveclear.onrender.com",
-      hivebank: "https://hivebank.onrender.com",
-      hiveforge: "https://hiveforge-lhu4.onrender.com",
-    },
+    pheromones: {
+      strongest: 'construction_compliance',
+      yield: 0.94
+    }
   });
 });
 
