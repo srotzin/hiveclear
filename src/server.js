@@ -23,6 +23,13 @@ const slashingRoutes = require('./routes/slashing');
 const statsRoutes = require('./routes/stats');
 const velvetRopeRoutes = require('./routes/velvet-rope');
 
+// Merged from hivetransactions
+const txIntentRoutes  = require('./routes/tx-intent');
+const txRouteRoutes   = require('./routes/tx-route');
+const txHedgeRoutes   = require('./routes/tx-hedge');
+const txExecuteRoutes = require('./routes/tx-execute');
+const txSalvageRoutes = require('./routes/tx-salvage');
+
 const app = express();
 app.set('hive-service', 'hiveclear');
 app.use(ritzMiddleware);
@@ -343,6 +350,13 @@ app.use('/v1/clear/scout', scoutRoutes);
 app.use('/v1/clear', slashingRoutes);
 app.use('/v1/clear/stats', statsRoutes);
 app.use('/v1/clear', velvetRopeRoutes);
+
+// Merged hivetransactions routes
+app.use('/v1/transaction', txIntentRoutes);
+app.use('/v1/transaction/route', txRouteRoutes);
+app.use('/v1/transaction', txHedgeRoutes);
+app.use('/v1/transaction', txExecuteRoutes);
+app.use('/v1/transaction/salvage', txSalvageRoutes);
 
 // Uptime monitor — check heartbeats and update uptime
 async function uptimeMonitor() {
