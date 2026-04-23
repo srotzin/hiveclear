@@ -29,6 +29,7 @@ const txRouteRoutes   = require('./routes/tx-route');
 const txHedgeRoutes   = require('./routes/tx-hedge');
 const txExecuteRoutes = require('./routes/tx-execute');
 const txSalvageRoutes = require('./routes/tx-salvage');
+const aiScreenRoutes = require('./routes/ai-screen');
 
 const app = express();
 app.set('hive-service', 'hiveclear');
@@ -357,6 +358,7 @@ app.use('/v1/transaction/route', txRouteRoutes);
 app.use('/v1/transaction', txHedgeRoutes);
 app.use('/v1/transaction', txExecuteRoutes);
 app.use('/v1/transaction/salvage', txSalvageRoutes);
+app.use('/v1/clear/ai', aiScreenRoutes);
 
 // Uptime monitor — check heartbeats and update uptime
 async function uptimeMonitor() {
