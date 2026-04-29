@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { authMiddleware, SERVICE_KEY } = require('./middleware/auth');
 const { velvetRopeMiddleware } = require('./middleware/velvet-rope');
 const { conciergeMiddleware } = require('./middleware/concierge');
+const { x402Middleware } = require('./middleware/x402');
 const { handleMcpRequest } = require('./mcp-tools');
 const { genesisBootstrap } = require('./services/validator');
 const { checkPendingSettlements } = require('./services/settlement');
@@ -287,6 +288,23 @@ const agentCardHandler = (req, res) => {
       currency: 'USDC',
       network: 'base',
       address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+      secondary_rails: [
+        { currency: 'USDT', network: 'base',   address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e' },
+        { currency: 'USDC', network: 'solana', address: 'B1N61cuL35fhskWz5dw8XqDyP6LWi3ZWmq8CNA9L3FVn' },
+      ],
+      fee_schedule: {
+        reconciliation_per_event:   { endpoint: 'POST /v1/clear/settle',                   amount_usdc: 0.01,  model: 'per_event',  note: 'Per reconciliation event — settlement matched to ledger entry' },
+        priority_settlement:        { endpoint: 'POST /v1/clear/priority-settle',           amount_usdc: 5.00,  model: 'flat',       note: 'Priority settlement with guaranteed sub-5s finality' },
+        ledger_subscription:        { endpoint: 'POST /v1/clear/ledger/subscribe',          amount_usdc: 200.0, model: 'monthly',    note: 'Persistent ledger storage with Spectral attestation; $200/mo' },
+        audit_attestation:          { endpoint: 'POST /v1/clear/audit/attest',              amount_usdc: 500.0, model: 'per_report', note: 'Monthly compliance report with Spectral-signed attestation; $500/report' },
+        cross_chain_reconciliation: { endpoint: 'POST /v1/clear/reconcile/cross-chain',     amount_usdc: 1.00,  model: 'per_match',  note: 'USDC Base ↔ USDC Solana, USDT Base ↔ USDT Eth; $1.00/cross-chain match' },
+        discrepancy_alert:          { endpoint: 'auto-emitted on mismatch',                  amount_usdc: 0.50,  model: 'per_alert',  note: 'When HiveClear detects a settlement mismatch; $0.50/alert' },
+        ai_aml_screen:              { endpoint: 'POST /v1/clear/ai/screen',                 amount_usdc: 0.04,  model: 'per_screen', note: 'AI-assisted AML + compliance screening; $0.04/call' },
+        bogo_first_call_free:       { note: 'First call free — pass x-hive-did header to claim' },
+        bogo_loyalty:               { note: 'Every 6th paid call free (loyalty threshold: 6)' },
+      },
+      partner_shape: 'Stripe/Coinbase/Circle ship rails; HiveClear is the settlement reconciliation + audit attestation layer',
+      treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
     },
     extensions: {
       hive_pricing: {
@@ -366,6 +384,11 @@ app.get('/.well-known/ai.json', (req, res) => {
     contact_email: "srotzin@me.com",
   });
 });
+
+// x402 payment middleware — real USDC payment gate on POST endpoints
+// Applied before auth so agents see 402 (not 401) on unwired calls.
+// GET endpoints (status, history, stats) remain free per fee schedule.
+app.use(x402Middleware);
 
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
