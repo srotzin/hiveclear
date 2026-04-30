@@ -6,6 +6,7 @@ const { authMiddleware, SERVICE_KEY } = require('./middleware/auth');
 const { velvetRopeMiddleware } = require('./middleware/velvet-rope');
 const { conciergeMiddleware } = require('./middleware/concierge');
 const { x402Middleware } = require('./middleware/x402');
+const { mppMiddleware } = require('./middleware/mpp');
 const { handleMcpRequest } = require('./mcp-tools');
 const { genesisBootstrap } = require('./services/validator');
 const { checkPendingSettlements } = require('./services/settlement');
@@ -42,6 +43,73 @@ app.use(cors());
 app.use(express.json());
 
 // Health check (no auth)
+// ─── MPP OpenAPI Discovery (public) ──────────────────────────────────────────
+// Required for MPPScan auto-discovery and mppx compatibility
+app.get('/openapi.json', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({
+    openapi: '3.0.3',
+    info: {
+      title: 'HiveClear — Autonomous Settlement & Clearing Engine',
+      version: '1.0.0',
+      description: 'Stream D/E settlement engine. Multi-validator consensus, real-time clearing. USDC on Tempo/Base. Accepts x402 and MPP rails.',
+      contact: { name: 'Hive Civilization', url: 'https://thehiveryiq.com', email: 'steve@thehiveryiq.com' },
+    },
+    servers: [{ url: 'https://hiveclear.onrender.com' }],
+    'x-mpp': {
+      realm: 'hiveclear.onrender.com',
+      payment: { method: 'tempo', currency: '0x20c000000000000000000000b9537d11c60e8b50', decimals: 6, recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e' },
+      rails: ['x402', 'mpp'],
+      categories: ['settlement', 'clearing'],
+      integration: 'first-party',
+      tags: ['settlement', 'clearing', 'validator', 'consensus', 'stream-d', 'stream-e'],
+      treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+    },
+    paths: {
+      '/v1/clear/settle': {
+        post: {
+          summary: 'Single settlement',
+          description: 'Submit a single settlement for validator consensus. $0.25 USDC.',
+          'x-mpp-charge': { amount: '250000', intent: 'charge' },
+          responses: { '200': { description: 'Settlement submitted' }, '402': { description: 'Payment required — x402 or MPP' } },
+        },
+      },
+      '/v1/clear/settle/batch': {
+        post: {
+          summary: 'Batch settlement',
+          description: 'Submit a batch of settlements. $1.00 USDC per batch.',
+          'x-mpp-charge': { amount: '1000000', intent: 'charge' },
+          responses: { '200': { description: 'Batch submitted' }, '402': { description: 'Payment required' } },
+        },
+      },
+      '/v1/clear/route': {
+        post: {
+          summary: 'Route transaction',
+          description: 'Route a transaction for optimal clearing path. $0.25 USDC.',
+          'x-mpp-charge': { amount: '250000', intent: 'charge' },
+          responses: { '200': { description: 'Route computed' }, '402': { description: 'Payment required' } },
+        },
+      },
+      '/v1/clear/execute': {
+        post: {
+          summary: 'Execute settlement',
+          description: 'Execute a routed settlement. $0.50 USDC.',
+          'x-mpp-charge': { amount: '500000', intent: 'charge' },
+          responses: { '200': { description: 'Settlement executed' }, '402': { description: 'Payment required' } },
+        },
+      },
+      '/v1/clear/hedge': {
+        post: {
+          summary: 'Hedge position',
+          description: 'Submit hedge instruction. $0.25 USDC.',
+          'x-mpp-charge': { amount: '250000', intent: 'charge' },
+          responses: { '200': { description: 'Hedge submitted' }, '402': { description: 'Payment required' } },
+        },
+      },
+    },
+  });
+});
+
 app.get('/health', async (req, res) => {
   try {
     const validatorCount = await db.getOne('SELECT COUNT(*) as cnt FROM validators');
@@ -389,6 +457,11 @@ app.get('/.well-known/ai.json', (req, res) => {
 // Applied before auth so agents see 402 (not 401) on unwired calls.
 // GET endpoints (status, history, stats) remain free per fee schedule.
 app.use(x402Middleware);
+
+// MPP rail — runs after x402, grants access via MPP Payment header
+// Payment: scheme="mpp", tx_hash="0x...", rail="tempo", amount="0.25"
+// IETF draft-ryan-httpauth-payment compliant. Tempo + Base mainnet only.
+app.use('/v1', mppMiddleware);
 
 // Auth middleware for all /v1 routes
 app.use('/v1', authMiddleware);
