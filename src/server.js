@@ -33,6 +33,15 @@ const txExecuteRoutes = require('./routes/tx-execute');
 const txSalvageRoutes = require('./routes/tx-salvage');
 const aiScreenRoutes = require('./routes/ai-screen');
 
+// ─── Recruitment envelope — boot guard + response wrapper ────────────────────
+const {
+  recruitmentEnvelope,
+  recruitmentResponseWrapper,
+  recruitmentErrorHandler,
+  assertEnvelopeIntegrity,
+} = require('./middleware/recruitment');
+assertEnvelopeIntegrity(); // fail closed at boot
+
 const app = express();
 app.set('hive-service', 'hiveclear');
 app.use(ritzMiddleware);
@@ -41,6 +50,7 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(recruitmentResponseWrapper); // wrap any res.status(N>=400).json()
 
 // Health check (no auth)
 // ─── MPP OpenAPI Discovery (public) ──────────────────────────────────────────
@@ -501,6 +511,9 @@ async function uptimeMonitor() {
     }
   }
 }
+
+// ─── Recruitment envelope — trailing error handler ───────────────────────
+app.use(recruitmentErrorHandler);
 
 // Start server
 async function start() {
