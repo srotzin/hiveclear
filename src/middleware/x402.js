@@ -18,14 +18,14 @@
  * taken at settlement time from amount_usdc. The x402 gate here adds a
  * per-call access fee on top (currently $0.01) for the reconciliation layer.
  *
- * Treasury: Monroe Base 0x15184bf50b3d3f52b60434f8942b7d52f2eb436e
+ * Treasury: Monroe Base 0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E
  * Brand gold: #C08D23
  */
 
-const HIVE_PAYMENT_ADDRESS = (process.env.HIVE_PAYMENT_ADDRESS || '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e').toLowerCase();
+const HIVE_PAYMENT_ADDRESS = (process.env.HIVE_PAYMENT_ADDRESS || '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E').toLowerCase();
 const SERVICE_KEY = process.env.HIVECLEAR_SERVICE_KEY || process.env.HIVE_INTERNAL_KEY || '';
 const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
-const USDC_CONTRACT = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+const USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const BASE_CHAIN_ID = 8453;
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || 'https://facilitator.xpay.sh';
@@ -241,7 +241,7 @@ function x402Middleware(req, res, next) {
       ai_aml_screen:              '$0.04/screen — POST /v1/clear/ai/screen',
     },
     partner_shape: 'Stripe/Coinbase/Circle ship rails; HiveClear is the settlement reconciliation + audit attestation layer',
-    treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+    treasury: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
     brand: '#C08D23',
   });
 }

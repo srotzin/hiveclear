@@ -21,7 +21,7 @@ function insufficientFunds(res, { amount_usdc, available_usdc, from_did }) {
     currency: 'USDC',
     network: 'base-sepolia',
     amount_usdc: deficit,
-    recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+    recipient: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
     memo: `Top-up for settlement deficit — ${errorId}`,
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     nonce: crypto.randomBytes(16).toString('hex'),

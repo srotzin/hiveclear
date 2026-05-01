@@ -58,12 +58,12 @@ app.get('/openapi.json', (req, res) => {
     servers: [{ url: 'https://hiveclear.onrender.com' }],
     'x-mpp': {
       realm: 'hiveclear.onrender.com',
-      payment: { method: 'tempo', currency: '0x20c000000000000000000000b9537d11c60e8b50', decimals: 6, recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e' },
+      payment: { method: 'tempo', currency: '0x20c000000000000000000000b9537d11c60e8b50', decimals: 6, recipient: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E' },
       rails: ['x402', 'mpp'],
       categories: ['settlement', 'clearing'],
       integration: 'first-party',
       tags: ['settlement', 'clearing', 'validator', 'consensus', 'stream-d', 'stream-e'],
-      treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+      treasury: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
     },
     paths: {
       '/v1/clear/settle': {
@@ -262,7 +262,7 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
       protocol: 'x402',
       currency: 'USDC',
       network: 'base',
-      address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+      address: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
     },
     extensions: {
       hive_pricing: {
@@ -355,9 +355,9 @@ const agentCardHandler = (req, res) => {
       protocol: 'x402',
       currency: 'USDC',
       network: 'base',
-      address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+      address: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
       secondary_rails: [
-        { currency: 'USDT', network: 'base',   address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e' },
+        { currency: 'USDT', network: 'base',   address: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E' },
         { currency: 'USDC', network: 'solana', address: 'B1N61cuL35fhskWz5dw8XqDyP6LWi3ZWmq8CNA9L3FVn' },
       ],
       fee_schedule: {
@@ -372,7 +372,7 @@ const agentCardHandler = (req, res) => {
         bogo_loyalty:               { note: 'Every 6th paid call free (loyalty threshold: 6)' },
       },
       partner_shape: 'Stripe/Coinbase/Circle ship rails; HiveClear is the settlement reconciliation + audit attestation layer',
-      treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+      treasury: '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E',
     },
     extensions: {
       hive_pricing: {
